@@ -328,6 +328,27 @@ app.get("/api/wallet", async (req, res) => {
   }
 });
 
+/**
+ * Wallet connect endpoint - Store wallet connection info
+ */
+app.post("/api/wallet/connect", (req, res) => {
+  try {
+    const { type, address, network, chainId, name } = req.body;
+    logger.info(`Wallet connected: ${type} - ${address}`);
+    res.json({
+      success: true,
+      message: "Wallet connection info received",
+      wallet: { type, address, network, chainId, name },
+    });
+  } catch (error) {
+    logger.error("Error storing wallet info", error);
+    res.status(500).json({
+      error: "Failed to store wallet info",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
 // Serve HTML interface
 app.get("/", (req, res) => {
   res.setHeader("Content-Type", "text/html");
@@ -587,6 +608,101 @@ app.get("/", (req, res) => {
             color: #FFD700;
             font-weight: 600;
         }
+        .wallet-connect-section {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        .connect-wallet-btn {
+            padding: 10px 20px;
+            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
+            color: #333;
+            border: none;
+            border-radius: 8px;
+            font-size: 0.95em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+        }
+        .connect-wallet-btn:hover {
+            background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
+        }
+        .wallet-dropdown {
+            position: relative;
+            display: inline-block;
+        }
+        .wallet-menu {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            margin-top: 8px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            min-width: 200px;
+            z-index: 1000;
+            overflow: hidden;
+        }
+        .wallet-menu.show {
+            display: block;
+        }
+        .wallet-option {
+            padding: 12px 16px;
+            cursor: pointer;
+            transition: background 0.2s;
+            border-bottom: 1px solid #f0f0f0;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .wallet-option:last-child {
+            border-bottom: none;
+        }
+        .wallet-option:hover {
+            background: #f8f9fa;
+        }
+        .wallet-option.evm {
+            border-left: 3px solid #627EEA;
+        }
+        .wallet-option.polkadot {
+            border-left: 3px solid #E6007A;
+        }
+        .wallet-icon {
+            font-size: 1.2em;
+        }
+        .wallet-info {
+            margin-top: 10px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            font-size: 0.85em;
+            text-align: center;
+        }
+        .wallet-address {
+            font-family: monospace;
+            word-break: break-all;
+            margin-top: 4px;
+        }
+        .disconnect-btn {
+            margin-top: 8px;
+            padding: 6px 12px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.8em;
+        }
+        .disconnect-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
     </style>
 </head>
 <body>
@@ -626,6 +742,44 @@ app.get("/", (req, res) => {
                 </div>
             </div>
             <div id="levelInfo" style="margin-top: 10px; font-size: 0.85em; opacity: 0.9;"></div>
+            <div class="wallet-connect-section">
+                <div class="wallet-dropdown">
+                    <button class="connect-wallet-btn" id="connectWalletBtn" onclick="toggleWalletMenu()">
+                        🔗 Connect Wallet
+                    </button>
+                    <div class="wallet-menu" id="walletMenu">
+                        <div class="wallet-option evm" onclick="connectEVMWallet('metamask')">
+                            <span class="wallet-icon">🦊</span>
+                            <span>MetaMask</span>
+                        </div>
+                        <div class="wallet-option evm" onclick="connectEVMWallet('walletconnect')">
+                            <span class="wallet-icon">🔷</span>
+                            <span>WalletConnect</span>
+                        </div>
+                        <div class="wallet-option evm" onclick="connectEVMWallet('coinbase')">
+                            <span class="wallet-icon">🔵</span>
+                            <span>Coinbase Wallet</span>
+                        </div>
+                        <div class="wallet-option evm" onclick="connectEVMWallet('injected')">
+                            <span class="wallet-icon">💼</span>
+                            <span>Other EVM Wallet</span>
+                        </div>
+                        <div class="wallet-option polkadot" onclick="connectPolkadotWallet()">
+                            <span class="wallet-icon">⚫</span>
+                            <span>Polkadot.js</span>
+                        </div>
+                        <div class="wallet-option polkadot" onclick="connectPolkadotWallet('talisman')">
+                            <span class="wallet-icon">🔮</span>
+                            <span>Talisman</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="wallet-info" id="walletInfo" style="display: none;">
+                    <div><strong>Connected:</strong> <span id="walletType"></span></div>
+                    <div class="wallet-address" id="walletAddress"></div>
+                    <button class="disconnect-btn" onclick="disconnectWallet()">Disconnect</button>
+                </div>
+            </div>
         </div>
         <div class="content">
             <div class="chat-section">
@@ -680,8 +834,215 @@ app.get("/", (req, res) => {
         </div>
     </div>
 
+    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
     <script>
         let threadId = 'web-' + Date.now();
+        let currentSelectedLevel = 'level_1_local';
+        let connectedWallet = null;
+        let walletProvider = null;
+        
+        // Wallet connection functions
+        function toggleWalletMenu() {
+            const menu = document.getElementById('walletMenu');
+            if (connectedWallet) {
+                return; // Don't show menu if already connected
+            }
+            menu.classList.toggle('show');
+        }
+        
+        // Close wallet menu when clicking outside
+        document.addEventListener('click', function(event) {
+            const menu = document.getElementById('walletMenu');
+            const btn = document.getElementById('connectWalletBtn');
+            if (menu && btn && !menu.contains(event.target) && !btn.contains(event.target)) {
+                menu.classList.remove('show');
+            }
+        });
+        
+        async function connectEVMWallet(type) {
+            document.getElementById('walletMenu').classList.remove('show');
+            
+            try {
+                let provider;
+                let walletName;
+                
+                if (type === 'metamask' || type === 'injected') {
+                    if (typeof window.ethereum === 'undefined') {
+                        alert('Please install MetaMask or another EVM wallet extension');
+                        return;
+                    }
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    walletName = type === 'metamask' ? 'MetaMask' : 'EVM Wallet';
+                    
+                    // Request account access
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                } else if (type === 'coinbase') {
+                    if (typeof window.ethereum === 'undefined' || !window.ethereum.isCoinbaseWallet) {
+                        alert('Please install Coinbase Wallet extension');
+                        return;
+                    }
+                    provider = new ethers.providers.Web3Provider(window.ethereum);
+                    walletName = 'Coinbase Wallet';
+                    await window.ethereum.request({ method: 'eth_requestAccounts' });
+                } else if (type === 'walletconnect') {
+                    alert('WalletConnect integration coming soon! For now, please use MetaMask or another injected wallet.');
+                    return;
+                }
+                
+                const signer = provider.getSigner();
+                const address = await signer.getAddress();
+                const network = await provider.getNetwork();
+                
+                connectedWallet = {
+                    type: 'EVM',
+                    name: walletName,
+                    address: address,
+                    network: network.name,
+                    chainId: network.chainId
+                };
+                
+                walletProvider = provider;
+                updateWalletUI();
+                
+                // Send wallet info to backend
+                try {
+                    await fetch('/api/wallet/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'EVM',
+                            address: address,
+                            network: network.name,
+                            chainId: network.chainId.toString()
+                        })
+                    });
+                } catch (error) {
+                    console.warn('Failed to send wallet info to backend:', error);
+                }
+                
+                addMessage('agent', \`✅ Connected to \${walletName}: \${address.substring(0, 6)}...\${address.substring(38)}\`);
+            } catch (error) {
+                console.error('Error connecting EVM wallet:', error);
+                alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+            }
+        }
+        
+        async function connectPolkadotWallet(type = 'polkadot') {
+            document.getElementById('walletMenu').classList.remove('show');
+            
+            try {
+                // Check if Polkadot extension is available
+                if (typeof window.injectedWeb3 === 'undefined') {
+                    alert('Please install Polkadot.js extension or Talisman wallet');
+                    return;
+                }
+                
+                let extension;
+                let walletName;
+                
+                if (type === 'talisman' && window.injectedWeb3['talisman']) {
+                    extension = window.injectedWeb3['talisman'];
+                    walletName = 'Talisman';
+                } else if (window.injectedWeb3['polkadot-js']) {
+                    extension = window.injectedWeb3['polkadot-js'];
+                    walletName = 'Polkadot.js';
+                } else {
+                    // Try to use any available extension
+                    const available = Object.keys(window.injectedWeb3);
+                    if (available.length === 0) {
+                        alert('No Polkadot wallet extension found');
+                        return;
+                    }
+                    extension = window.injectedWeb3[available[0]];
+                    walletName = available[0];
+                }
+                
+                const injector = await extension.enable('NetWatch');
+                const accounts = await injector.accounts.get();
+                
+                if (accounts.length === 0) {
+                    alert('No accounts found. Please create an account in your wallet.');
+                    return;
+                }
+                
+                // Use first account
+                const account = accounts[0];
+                
+                connectedWallet = {
+                    type: 'Polkadot',
+                    name: walletName,
+                    address: account.address,
+                    name: account.name || 'Unnamed'
+                };
+                
+                updateWalletUI();
+                
+                // Send wallet info to backend
+                try {
+                    await fetch('/api/wallet/connect', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            type: 'Polkadot',
+                            address: account.address,
+                            name: account.name
+                        })
+                    });
+                } catch (error) {
+                    console.warn('Failed to send wallet info to backend:', error);
+                }
+                
+                addMessage('agent', \`✅ Connected to \${walletName}: \${account.address.substring(0, 6)}...\${account.address.substring(account.address.length - 6)}\`);
+            } catch (error) {
+                console.error('Error connecting Polkadot wallet:', error);
+                alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+            }
+        }
+        
+        function updateWalletUI() {
+            const btn = document.getElementById('connectWalletBtn');
+            const info = document.getElementById('walletInfo');
+            const typeSpan = document.getElementById('walletType');
+            const addressSpan = document.getElementById('walletAddress');
+            
+            if (connectedWallet) {
+                btn.textContent = '🔗 Wallet Connected';
+                btn.style.background = 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)';
+                btn.style.cursor = 'default';
+                info.style.display = 'block';
+                typeSpan.textContent = \`\${connectedWallet.name} (\${connectedWallet.type})\`;
+                addressSpan.textContent = connectedWallet.address;
+            } else {
+                btn.textContent = '🔗 Connect Wallet';
+                btn.style.background = 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)';
+                btn.style.cursor = 'pointer';
+                info.style.display = 'none';
+            }
+        }
+        
+        function disconnectWallet() {
+            connectedWallet = null;
+            walletProvider = null;
+            updateWalletUI();
+            addMessage('agent', 'Wallet disconnected');
+        }
+        
+        // Listen for account changes (EVM)
+        if (typeof window.ethereum !== 'undefined') {
+            window.ethereum.on('accountsChanged', function(accounts) {
+                if (accounts.length === 0 && connectedWallet?.type === 'EVM') {
+                    disconnectWallet();
+                } else if (connectedWallet?.type === 'EVM') {
+                    connectEVMWallet('injected');
+                }
+            });
+            
+            window.ethereum.on('chainChanged', function(chainId) {
+                if (connectedWallet?.type === 'EVM') {
+                    connectEVMWallet('injected');
+                }
+            });
+        }
 
         async function checkStatus() {
             try {
@@ -700,6 +1061,7 @@ app.get("/", (req, res) => {
                     const currentLevelRadio = document.getElementById(data.currentLevel);
                     if (currentLevelRadio) {
                         currentLevelRadio.checked = true;
+                        currentSelectedLevel = data.currentLevel;
                     }
                     
                     // Update level info
@@ -728,11 +1090,15 @@ app.get("/", (req, res) => {
             }
         }
 
+        let currentSelectedLevel = 'level_1_local';
+        
         async function switchLevel() {
             const checkedRadio = document.querySelector('input[name="level"]:checked');
             if (!checkedRadio) return;
             
             const level = checkedRadio.value;
+            const previousLevel = currentSelectedLevel;
+            currentSelectedLevel = level;
             
             try {
                 const response = await fetch('/api/level', {
@@ -748,17 +1114,17 @@ app.get("/", (req, res) => {
                 } else {
                     // Revert checkbox if failed
                     checkedRadio.checked = false;
-                    const previousLevel = '${currentLevel}' || 'level_1_local';
                     const prevRadio = document.getElementById(previousLevel);
                     if (prevRadio) prevRadio.checked = true;
+                    currentSelectedLevel = previousLevel;
                     alert('Failed to switch level: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
                 // Revert checkbox on error
                 checkedRadio.checked = false;
-                const previousLevel = '${currentLevel}' || 'level_1_local';
                 const prevRadio = document.getElementById(previousLevel);
                 if (prevRadio) prevRadio.checked = true;
+                currentSelectedLevel = previousLevel;
                 alert('Error switching level: ' + error.message);
             }
         }
