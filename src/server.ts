@@ -14,7 +14,17 @@ async function loadAgentModules() {
     try {
       logger.info("Attempting to load agent modules with dynamic import...");
       // Use dynamic import - tsx handles this better than require for TypeScript files
-      const indexModule = await import("./index.js");
+      // Try both .js and without extension for tsx compatibility
+      let indexModule;
+      try {
+        indexModule = await import("./index.js");
+      } catch (e) {
+        try {
+          indexModule = await import("./index");
+        } catch (e2) {
+          throw new Error(`Failed to import index module: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
       initializeAgent = indexModule.initializeAgent;
       if (!initializeAgent) {
         throw new Error("initializeAgent not found in index module");
@@ -28,7 +38,17 @@ async function loadAgentModules() {
       }
       logger.info("✓ langchain module loaded");
       
-      const levelManagerModule = await import("./utils/level-manager.js");
+      // Try both .js and without extension
+      let levelManagerModule;
+      try {
+        levelManagerModule = await import("./utils/level-manager.js");
+      } catch (e) {
+        try {
+          levelManagerModule = await import("./utils/level-manager");
+        } catch (e2) {
+          throw new Error(`Failed to import level-manager module: ${e instanceof Error ? e.message : String(e)}`);
+        }
+      }
       AnalystLevel = levelManagerModule.AnalystLevel;
       levelManager = levelManagerModule.levelManager;
       if (!levelManager) {
@@ -72,7 +92,7 @@ app.use((req, res, next) => {
 // Initialize agent (singleton)
 let agentInstance: any = null;
 let agentInitialized = false;
-let currentLevel: string = "level_2_intel";
+let currentLevel: string = "level_3_tools"; // Default to MCP since search was removed
 
 async function getAgent(level?: string) {
   // Try to load modules if not already loaded
@@ -87,20 +107,37 @@ async function getAgent(level?: string) {
     throw new Error("Agent initialization module not available");
   }
   
+  // Convert string level to AnalystLevel enum if needed
+  let levelEnum: any = undefined;
+  if (level && AnalystLevel) {
+    // Map string to enum value
+    const levelMap: Record<string, any> = {
+      "level_1_local": AnalystLevel.LEVEL_1_LOCAL,
+      "level_2_intel": AnalystLevel.LEVEL_2_INTEL,
+      "level_3_tools": AnalystLevel.LEVEL_3_TOOLS,
+      "level_4a_a2a": AnalystLevel.LEVEL_4A_A2A,
+      "level_4b_x402": AnalystLevel.LEVEL_4B_X402,
+    };
+    levelEnum = levelMap[level];
+    if (levelEnum && levelManager) {
+      currentLevel = level;
+      levelManager.setLevel(levelEnum);
+    }
+  }
+  
   // Reinitialize if level changed or not initialized
   if (!agentInstance || (level && level !== currentLevel)) {
-    if (level && levelManager) {
-      currentLevel = level;
-      levelManager.setLevel(level);
-    }
     try {
-      logger.info(`Initializing agent at level: ${currentLevel}`);
-      agentInstance = await initializeAgent(currentLevel);
+      logger.info(`Initializing agent at level: ${currentLevel || 'default'}`);
+      // Use levelEnum if available, otherwise let initializeAgent use default
+      agentInstance = await initializeAgent(levelEnum);
       agentInitialized = true;
       logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
     } catch (error) {
       logger.error("Failed to initialize agent", error);
       agentInitialized = false;
+      // Don't throw - allow graceful degradation
+      // The chat endpoint will handle this
       throw error;
     }
   }
@@ -238,10 +275,20 @@ app.post("/api/chat", async (req, res) => {
         await getAgent();
       } catch (error) {
         logger.error("Agent initialization error in chat endpoint:", error);
+        const errorMsg = error instanceof Error ? error.message : String(error);
+        // Check if it's a missing API key issue (Level 1 can work without CDP keys)
+        if (errorMsg.includes("CDP_API_KEY") || errorMsg.includes("OPENAI_API_KEY")) {
+          return res.status(503).json({
+            error: "Agent not initialized",
+            message: "Missing required API keys. Please check your .env file.",
+            details: errorMsg,
+            hint: "For Level 1 (local), only OPENAI_API_KEY is required. For other levels, CDP keys are needed.",
+          });
+        }
         return res.status(503).json({
           error: "Agent not initialized",
           message: "Agent initialization failed. Please check server logs for details.",
-          details: error instanceof Error ? error.message : String(error),
+          details: errorMsg,
         });
       }
     }
@@ -654,13 +701,13 @@ app.get("/", (req, res) => {
             background: rgba(0, 255, 255, 0.1);
             border-color: rgba(0, 255, 255, 0.4);
         }
-        .level-checkbox-wrapper input[type="radio"] {
+        .level-checkbox-wrapper input[type="checkbox"] {
             width: 18px;
             height: 18px;
             cursor: pointer;
             accent-color: #00ffff;
         }
-        .level-checkbox-wrapper input[type="radio"]:checked {
+        .level-checkbox-wrapper input[type="checkbox"]:checked {
             accent-color: #00ff88;
         }
         .level-checkbox-wrapper label {
@@ -671,7 +718,7 @@ app.get("/", (req, res) => {
             margin: 0;
             font-family: 'Courier New', monospace;
         }
-        .level-checkbox-wrapper input[type="radio"]:checked + label {
+        .level-checkbox-wrapper input[type="checkbox"]:checked + label {
             color: #00ffff;
             font-weight: 600;
         }
@@ -794,19 +841,15 @@ app.get("/", (req, res) => {
             <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <div class="level-checkboxes">
                         <div class="level-checkbox-wrapper">
-                            <input type="radio" id="level_2_intel" name="level" value="level_2_intel" onchange="switchLevel()">
-                            <label for="level_2_intel">search</label>
-                        </div>
-                        <div class="level-checkbox-wrapper">
-                            <input type="radio" id="level_3_tools" name="level" value="level_3_tools" onchange="switchLevel()">
+                            <input type="checkbox" id="level_3_tools" name="level" value="level_3_tools" onchange="updateLevels()">
                             <label for="level_3_tools">MCP</label>
                         </div>
                         <div class="level-checkbox-wrapper">
-                            <input type="radio" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="switchLevel()">
+                            <input type="checkbox" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="updateLevels()">
                             <label for="level_4a_a2a">A2A</label>
                         </div>
                         <div class="level-checkbox-wrapper">
-                            <input type="radio" id="level_4b_x402" name="level" value="level_4b_x402" onchange="switchLevel()">
+                            <input type="checkbox" id="level_4b_x402" name="level" value="level_4b_x402" onchange="updateLevels()">
                             <label for="level_4b_x402">x402</label>
                         </div>
                 </div>
@@ -907,7 +950,7 @@ app.get("/", (req, res) => {
     <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
     <script>
         let threadId = 'web-' + Date.now();
-        let currentSelectedLevel = 'level_2_intel';
+        let selectedLevels = [];
         let connectedWallet = null;
         let walletProvider = null;
         
@@ -1237,23 +1280,17 @@ app.get("/", (req, res) => {
                 const data = await response.json();
                 // Status indicator removed per user request
                 
-                // Update level checkboxes
+                // Update level checkboxes - support multiple selections
                 if (data.currentLevel) {
-                    // Uncheck all first
-                    document.querySelectorAll('input[name="level"]').forEach(radio => {
-                        radio.checked = false;
-                    });
-                    // Check the current level
-                    const currentLevelRadio = document.getElementById(data.currentLevel);
-                    if (currentLevelRadio) {
-                        currentLevelRadio.checked = true;
-                        currentSelectedLevel = data.currentLevel;
-                    }
-                    
-                    // Update level info
+                    // For now, just update the info - multiple selections handled by updateLevels()
                     const levelInfo = document.getElementById('levelInfo');
                     if (levelInfo && data.capabilities) {
-                        levelInfo.innerHTML = \`<strong>\${data.currentLevel.replace('level_', '').replace('_', ' ').toUpperCase()}</strong>: \${data.capabilities.description}\`;
+                        const selectedLevels = Array.from(document.querySelectorAll('input[name="level"]:checked')).map(cb => cb.value);
+                        if (selectedLevels.length > 0) {
+                            levelInfo.innerHTML = \`<strong>Selected:</strong> \${selectedLevels.map(l => l.replace('level_', '').replace('_', ' ').toUpperCase()).join(', ')}\`;
+                        } else {
+                            levelInfo.innerHTML = \`<strong>\${data.currentLevel.replace('level_', '').replace('_', ' ').toUpperCase()}</strong>: \${data.capabilities.description}\`;
+                        }
                     }
                 }
                 
@@ -1275,43 +1312,50 @@ app.get("/", (req, res) => {
             }
         }
 
-        let currentSelectedLevel = 'level_2_intel';
+        let selectedLevels = [];
+        
+        async function updateLevels() {
+            const checkedBoxes = document.querySelectorAll('input[name="level"]:checked');
+            selectedLevels = Array.from(checkedBoxes).map(cb => cb.value);
+            
+            // Update level info display
+            const levelInfo = document.getElementById('levelInfo');
+            if (levelInfo) {
+                if (selectedLevels.length > 0) {
+                    levelInfo.innerHTML = \`<strong>Selected:</strong> \${selectedLevels.map(l => l.replace('level_', '').replace('_', ' ').toUpperCase()).join(', ')}\`;
+                } else {
+                    levelInfo.innerHTML = '<strong>No levels selected</strong>';
+                }
+            }
+            
+            // Switch to first selected level (backend supports single level)
+            if (selectedLevels.length > 0) {
+                try {
+                    const response = await fetch('/api/level', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ level: selectedLevels[0] })
+                    });
+                    
+                    const data = await response.json();
+                    if (data.success) {
+                        addMessage('agent', \`✅ Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
+                        checkStatus(); // Refresh status
+                    } else {
+                        console.error('Failed to switch level:', data.error);
+                    }
+                } catch (error) {
+                    console.error('Error switching level:', error);
+                }
+            }
+            
+            console.log('Selected levels:', selectedLevels);
+        }
         
         async function switchLevel() {
-            const checkedRadio = document.querySelector('input[name="level"]:checked');
-            if (!checkedRadio) return;
-            
-            const level = checkedRadio.value;
-            const previousLevel = currentSelectedLevel;
-            currentSelectedLevel = level;
-            
-            try {
-                const response = await fetch('/api/level', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ level })
-                });
-                
-                const data = await response.json();
-                if (data.success) {
-                    addMessage('agent', \`✅ Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
-                    checkStatus(); // Refresh status
-                } else {
-                    // Revert checkbox if failed
-                    checkedRadio.checked = false;
-                    const prevRadio = document.getElementById(previousLevel);
-                    if (prevRadio) prevRadio.checked = true;
-                    currentSelectedLevel = previousLevel;
-                    alert('Failed to switch level: ' + (data.error || 'Unknown error'));
-                }
-            } catch (error) {
-                // Revert checkbox on error
-                checkedRadio.checked = false;
-                const prevRadio = document.getElementById(previousLevel);
-                if (prevRadio) prevRadio.checked = true;
-                currentSelectedLevel = previousLevel;
-                alert('Error switching level: ' + error.message);
-            }
+            // Legacy function - kept for compatibility
+            // Use updateLevels() for checkbox-based multiple selection
+            updateLevels();
         }
 
         function sendQuickMessage(message) {
