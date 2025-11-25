@@ -1,10 +1,31 @@
 import express from "express";
-import { HumanMessage } from "@langchain/core/messages";
-import { initializeAgent } from "./index";
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
-import { AnalystLevel, levelManager } from "./utils/level-manager";
 import * as dotenv from "dotenv";
+
+// Lazy import to avoid decorator metadata issues during module load
+let initializeAgent: any;
+let AnalystLevel: any;
+let levelManager: any;
+let HumanMessage: any;
+
+function loadAgentModules() {
+  if (!initializeAgent) {
+    try {
+      const indexModule = require("./index");
+      initializeAgent = indexModule.initializeAgent;
+      const langchainModule = require("@langchain/core/messages");
+      HumanMessage = langchainModule.HumanMessage;
+      const levelManagerModule = require("./utils/level-manager");
+      AnalystLevel = levelManagerModule.AnalystLevel;
+      levelManager = levelManagerModule.levelManager;
+    } catch (error) {
+      logger.warn("Failed to load agent modules (this is expected with decorator issues):", error);
+      return false;
+    }
+  }
+  return true;
+}
 
 dotenv.config();
 
@@ -27,20 +48,36 @@ app.use((req, res, next) => {
 });
 
 // Initialize agent (singleton)
-let agentInstance: Awaited<ReturnType<typeof initializeAgent>> | null = null;
+let agentInstance: any = null;
 let agentInitialized = false;
-let currentLevel: AnalystLevel = levelManager.getCurrentLevel();
+let currentLevel: string = "level_1_local";
 
-async function getAgent(level?: AnalystLevel) {
+async function getAgent(level?: string) {
+  // Try to load modules if not already loaded
+  if (!initializeAgent) {
+    if (!loadAgentModules()) {
+      throw new Error("Agent initialization module not available - decorator metadata issue");
+    }
+  }
+  
+  if (!initializeAgent) {
+    throw new Error("Agent initialization module not available");
+  }
+  
   // Reinitialize if level changed or not initialized
   if (!agentInstance || (level && level !== currentLevel)) {
-    if (level) {
+    if (level && levelManager) {
       currentLevel = level;
       levelManager.setLevel(level);
     }
-    agentInstance = await initializeAgent(currentLevel);
-    agentInitialized = true;
-    logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
+    try {
+      agentInstance = await initializeAgent(currentLevel);
+      agentInitialized = true;
+      logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
+    } catch (error) {
+      logger.error("Failed to initialize agent", error);
+      throw error;
+    }
   }
   return agentInstance;
 }
@@ -51,19 +88,26 @@ async function getAgent(level?: AnalystLevel) {
  * Health check endpoint
  */
 app.get("/health", (req, res) => {
-  const capabilities = levelManager.getCapabilities();
+  let capabilities: any = {};
+  if (levelManager) {
+    try {
+      capabilities = levelManager.getCapabilities();
+    } catch (error) {
+      capabilities = { description: "Capabilities not available" };
+    }
+  }
   res.json({
     status: "ok",
     agentInitialized,
     currentLevel: currentLevel,
-    capabilities: {
+    capabilities: capabilities.description ? {
       description: capabilities.description,
       networkAccess: capabilities.networkAccess,
       webSearch: capabilities.webSearch,
       mcpTools: capabilities.mcpTools,
       a2aCoordination: capabilities.a2aCoordination,
       payments: capabilities.payments,
-    },
+    } : { description: "Not available" },
     timestamp: new Date().toISOString(),
   });
 });
@@ -72,9 +116,16 @@ app.get("/health", (req, res) => {
  * Get available levels
  */
 app.get("/api/levels", (req, res) => {
+  if (!AnalystLevel || !levelManager) {
+    return res.json({
+      currentLevel: currentLevel,
+      availableLevels: [],
+      error: "Level manager not available",
+    });
+  }
   res.json({
     currentLevel: currentLevel,
-    availableLevels: Object.values(AnalystLevel).map((level) => ({
+    availableLevels: Object.values(AnalystLevel).map((level: string) => ({
       id: level,
       name: level.replace("LEVEL_", "").replace("_", " ").toUpperCase(),
       capabilities: levelManager.getCapabilities(),
@@ -97,30 +148,36 @@ app.post("/api/level", async (req, res) => {
   try {
     const { level } = req.body;
 
-    if (!level || !Object.values(AnalystLevel).includes(level)) {
+    if (!level) {
+      return res.status(400).json({
+        error: "Level is required",
+      });
+    }
+
+    if (!AnalystLevel || !Object.values(AnalystLevel).includes(level)) {
       return res.status(400).json({
         error: "Invalid level",
-        availableLevels: Object.values(AnalystLevel),
+        availableLevels: AnalystLevel ? Object.values(AnalystLevel) : [],
       });
     }
 
     // Reinitialize agent with new level
     agentInstance = null;
-    await getAgent(level as AnalystLevel);
+    await getAgent(level);
 
-    const capabilities = levelManager.getCapabilities();
+    const capabilities = levelManager ? levelManager.getCapabilities() : {};
 
     res.json({
       success: true,
       level: currentLevel,
-      capabilities: {
+      capabilities: capabilities.description ? {
         description: capabilities.description,
         networkAccess: capabilities.networkAccess,
         webSearch: capabilities.webSearch,
         mcpTools: capabilities.mcpTools,
         a2aCoordination: capabilities.a2aCoordination,
         payments: capabilities.payments,
-      },
+      } : { description: "Not available" },
       message: `Successfully switched to ${currentLevel}`,
     });
   } catch (error) {
@@ -146,13 +203,23 @@ app.post("/api/chat", async (req, res) => {
     }
 
     if (!agentInitialized) {
-      return res.status(503).json({
-        error: "Agent not initialized",
-        message: "Please check your .env file and ensure all required API keys are set",
-      });
+      // Try to load and initialize agent
+      try {
+        await getAgent();
+      } catch (error) {
+        return res.status(503).json({
+          error: "Agent not initialized",
+          message: "Agent initialization failed. This may be due to decorator metadata issues with tsx. Please check server logs.",
+          details: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
     const { agent, config } = await getAgent();
+    if (!HumanMessage) {
+      loadAgentModules();
+    }
+    
     const configWithThread = {
       ...config,
       configurable: {
@@ -270,7 +337,7 @@ app.get("/", (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>VeriSense - Cybersecurity Agent</title>
+    <title>NetWatch - Cybersecurity Agent</title>
     <style>
         * {
             margin: 0;
@@ -477,34 +544,92 @@ app.get("/", (req, res) => {
             overflow-x: auto;
             font-size: 0.9em;
         }
+        .level-checkboxes {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 12px;
+            justify-content: center;
+            align-items: center;
+            margin-top: 10px;
+        }
+        .level-checkbox-wrapper {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.15);
+            border-radius: 6px;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+        .level-checkbox-wrapper:hover {
+            background: rgba(255, 255, 255, 0.25);
+            border-color: rgba(255, 255, 255, 0.5);
+        }
+        .level-checkbox-wrapper input[type="radio"] {
+            width: 18px;
+            height: 18px;
+            cursor: pointer;
+            accent-color: #FFD700;
+        }
+        .level-checkbox-wrapper input[type="radio"]:checked {
+            accent-color: #4caf50;
+        }
+        .level-checkbox-wrapper label {
+            color: white;
+            font-size: 0.9em;
+            cursor: pointer;
+            user-select: none;
+            margin: 0;
+        }
+        .level-checkbox-wrapper input[type="radio"]:checked + label {
+            color: #FFD700;
+            font-weight: 600;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔒 VeriSense</h1>
+            <h1>🔒 NetWatch</h1>
             <p>Cybersecurity Agent for Blockchain Threat Detection</p>
             <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <div>
                     <span class="status-indicator" id="statusIndicator"></span>
                     <span id="statusText">Checking status...</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 10px;">
-                    <label for="levelSelect" style="color: white; font-size: 0.9em;">Level:</label>
-                    <select id="levelSelect" onchange="switchLevel()" style="padding: 6px 12px; border-radius: 4px; border: none; font-size: 0.9em; cursor: pointer;">
-                        <option value="level_1_local">Level 1 - Local</option>
-                        <option value="level_2_intel">Level 2 - Intel</option>
-                        <option value="level_3_tools">Level 3 - Tools</option>
-                        <option value="level_4a_a2a">Level 4A - A2A</option>
-                        <option value="level_4b_x402">Level 4B - x402</option>
-                    </select>
+                <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
+                    <label style="color: white; font-size: 0.9em; font-weight: 500;">Level:</label>
+                    <div class="level-checkboxes">
+                        <div class="level-checkbox-wrapper">
+                            <input type="radio" id="level_1_local" name="level" value="level_1_local" onchange="switchLevel()">
+                            <label for="level_1_local">✅ Level 1 - Local</label>
+                        </div>
+                        <div class="level-checkbox-wrapper">
+                            <input type="radio" id="level_2_intel" name="level" value="level_2_intel" onchange="switchLevel()">
+                            <label for="level_2_intel">✅ Level 2 - Intel</label>
+                        </div>
+                        <div class="level-checkbox-wrapper">
+                            <input type="radio" id="level_3_tools" name="level" value="level_3_tools" onchange="switchLevel()">
+                            <label for="level_3_tools">✅ Level 3 - Tools</label>
+                        </div>
+                        <div class="level-checkbox-wrapper">
+                            <input type="radio" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="switchLevel()">
+                            <label for="level_4a_a2a">✅ Level 4A - A2A</label>
+                        </div>
+                        <div class="level-checkbox-wrapper">
+                            <input type="radio" id="level_4b_x402" name="level" value="level_4b_x402" onchange="switchLevel()">
+                            <label for="level_4b_x402">✅ Level 4B - x402</label>
+                        </div>
+                    </div>
                 </div>
             </div>
             <div id="levelInfo" style="margin-top: 10px; font-size: 0.85em; opacity: 0.9;"></div>
         </div>
         <div class="content">
             <div class="chat-section">
-                <h2>💬 Chat with VeriSense</h2>
+                <h2>💬 Chat with NetWatch</h2>
                 <div style="margin-bottom: 15px; padding: 12px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #667eea;">
                     <div style="font-size: 0.9em; color: #1976d2;">
                         <strong>💡 Quick Actions:</strong>
@@ -517,8 +642,8 @@ app.get("/", (req, res) => {
                 </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message agent">
-                        <div class="message-label">🔒 VeriSense Agent</div>
-                        <div>Welcome! I'm VeriSense, your cybersecurity agent. I can help you:</div>
+                        <div class="message-label">🔒 NetWatch Agent</div>
+                        <div>Welcome! I'm NetWatch, your cybersecurity agent. I can help you:</div>
                         <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
                             <li>🔍 Analyze blockchain transactions for suspicious patterns</li>
                             <li>🛡️ Check address security and risk assessment</li>
@@ -565,11 +690,16 @@ app.get("/", (req, res) => {
                 document.getElementById('statusIndicator').className = 'status-indicator ' + (data.agentInitialized ? 'status-online' : 'status-offline');
                 document.getElementById('statusText').textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
                 
-                // Update level selector
+                // Update level checkboxes
                 if (data.currentLevel) {
-                    const levelSelect = document.getElementById('levelSelect');
-                    if (levelSelect) {
-                        levelSelect.value = data.currentLevel;
+                    // Uncheck all first
+                    document.querySelectorAll('input[name="level"]').forEach(radio => {
+                        radio.checked = false;
+                    });
+                    // Check the current level
+                    const currentLevelRadio = document.getElementById(data.currentLevel);
+                    if (currentLevelRadio) {
+                        currentLevelRadio.checked = true;
                     }
                     
                     // Update level info
@@ -599,8 +729,10 @@ app.get("/", (req, res) => {
         }
 
         async function switchLevel() {
-            const levelSelect = document.getElementById('levelSelect');
-            const level = levelSelect.value;
+            const checkedRadio = document.querySelector('input[name="level"]:checked');
+            if (!checkedRadio) return;
+            
+            const level = checkedRadio.value;
             
             try {
                 const response = await fetch('/api/level', {
@@ -611,12 +743,22 @@ app.get("/", (req, res) => {
                 
                 const data = await response.json();
                 if (data.success) {
-                    addMessage('agent', \`Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
+                    addMessage('agent', \`✅ Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
                     checkStatus(); // Refresh status
                 } else {
+                    // Revert checkbox if failed
+                    checkedRadio.checked = false;
+                    const previousLevel = '${currentLevel}' || 'level_1_local';
+                    const prevRadio = document.getElementById(previousLevel);
+                    if (prevRadio) prevRadio.checked = true;
                     alert('Failed to switch level: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
+                // Revert checkbox on error
+                checkedRadio.checked = false;
+                const previousLevel = '${currentLevel}' || 'level_1_local';
+                const prevRadio = document.getElementById(previousLevel);
+                if (prevRadio) prevRadio.checked = true;
                 alert('Error switching level: ' + error.message);
             }
         }
@@ -665,7 +807,7 @@ app.get("/", (req, res) => {
             const messagesDiv = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message ' + type;
-            messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'VeriSense Agent') + '</div><div>' + formatMessage(content) + '</div>';
+            messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'NetWatch Agent') + '</div><div>' + formatMessage(content) + '</div>';
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -751,7 +893,7 @@ app.get("/", (req, res) => {
                 Built with <span style="color: #FFD700;">⚡</span> 
                 <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">AgentKit</a>
                 and <span style="color: #FFD700;">🔒</span>
-                <a href="https://github.com/yourusername/verisense-agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">VeriSense</a>
+                <a href="https://github.com/yourusername/netwatch-agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">NetWatch</a>
             </div>
             <div style="opacity: 0.9; font-size: 0.9em;">
                 Made with <span style="color: #ff6b9d;">❤️</span> by 
@@ -768,7 +910,7 @@ app.get("/", (req, res) => {
 async function startServer() {
   // Start server even if agent initialization fails
   app.listen(PORT, () => {
-    logger.info(`🚀 VeriSense Server running on http://localhost:${PORT}`);
+    logger.info(`🚀 NetWatch Server running on http://localhost:${PORT}`);
     logger.info(`📊 Web Interface: http://localhost:${PORT}`);
     logger.info(`🔌 API Endpoints:`);
     logger.info(`   POST /api/chat - Chat with agent`);
@@ -778,15 +920,9 @@ async function startServer() {
     logger.info(`   GET  /health - Health check`);
   });
 
-  // Try to initialize agent in background (non-blocking)
-  try {
-    logger.info("Pre-initializing agent...");
-    await getAgent();
-    logger.info("Agent initialized successfully");
-  } catch (error) {
-    logger.warn("Agent initialization failed (server will continue without agent):", error);
-    logger.warn("Please check your .env file and ensure all required API keys are set");
-  }
+  // Don't pre-initialize agent - let it initialize on first API call
+  // This prevents decorator metadata errors from crashing the server
+  logger.info("Server started. Agent will initialize on first API call if needed.");
 }
 
 if (require.main === module) {
