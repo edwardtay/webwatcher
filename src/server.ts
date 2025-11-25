@@ -720,23 +720,23 @@ app.get("/", (req, res) => {
                     <div class="level-checkboxes">
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_1_local" name="level" value="level_1_local" onchange="switchLevel()">
-                            <label for="level_1_local">✅ Level 1 - Local</label>
+                            <label for="level_1_local">Level 1 - Local</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_2_intel" name="level" value="level_2_intel" onchange="switchLevel()">
-                            <label for="level_2_intel">✅ Level 2 - Intel</label>
+                            <label for="level_2_intel">Level 2 - Intel</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_3_tools" name="level" value="level_3_tools" onchange="switchLevel()">
-                            <label for="level_3_tools">✅ Level 3 - Tools</label>
+                            <label for="level_3_tools">Level 3 - Tools</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="switchLevel()">
-                            <label for="level_4a_a2a">✅ Level 4A - A2A</label>
+                            <label for="level_4a_a2a">Level 4A - A2A</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_4b_x402" name="level" value="level_4b_x402" onchange="switchLevel()">
-                            <label for="level_4b_x402">✅ Level 4B - x402</label>
+                            <label for="level_4b_x402">Level 4B - x402</label>
                         </div>
                     </div>
                 </div>
