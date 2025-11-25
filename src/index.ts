@@ -56,7 +56,7 @@ validateEnvironment();
 /**
  * Initialize the VeriSense cybersecurity agent with AgentKit
  */
-async function initializeAgent() {
+export async function initializeAgent() {
   try {
     logger.info("Initializing VeriSense Cybersecurity Agent...");
 

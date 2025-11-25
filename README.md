@@ -68,7 +68,17 @@ NETWORK_ID=base-sepolia
 
 ### Running the Agent
 
-#### Development Mode
+#### Web Server Mode (Recommended)
+Start the web server with a user-friendly interface:
+```bash
+npm run server
+# or
+./start-server.sh
+```
+
+Then open your browser to: **http://localhost:3000**
+
+#### CLI Mode (Development)
 ```bash
 npm run dev
 ```
