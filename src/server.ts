@@ -9,18 +9,40 @@ let AnalystLevel: any;
 let levelManager: any;
 let HumanMessage: any;
 
-function loadAgentModules() {
+async function loadAgentModules() {
   if (!initializeAgent) {
     try {
-      const indexModule = require("./index");
+      logger.info("Attempting to load agent modules with dynamic import...");
+      // Use dynamic import - tsx handles this better than require for TypeScript files
+      const indexModule = await import("./index.js");
       initializeAgent = indexModule.initializeAgent;
-      const langchainModule = require("@langchain/core/messages");
+      if (!initializeAgent) {
+        throw new Error("initializeAgent not found in index module");
+      }
+      logger.info("✓ index module loaded");
+      
+      const langchainModule = await import("@langchain/core/messages");
       HumanMessage = langchainModule.HumanMessage;
-      const levelManagerModule = require("./utils/level-manager");
+      if (!HumanMessage) {
+        throw new Error("HumanMessage not found in langchain module");
+      }
+      logger.info("✓ langchain module loaded");
+      
+      const levelManagerModule = await import("./utils/level-manager.js");
       AnalystLevel = levelManagerModule.AnalystLevel;
       levelManager = levelManagerModule.levelManager;
+      if (!levelManager) {
+        throw new Error("levelManager not found in level-manager module");
+      }
+      logger.info("✓ level-manager module loaded");
+      
+      logger.info("✓ All agent modules loaded successfully");
+      return true;
     } catch (error) {
-      logger.warn("Failed to load agent modules (this is expected with decorator issues):", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      const errorStack = error instanceof Error ? error.stack : String(error);
+      logger.error("Failed to load agent modules:", errorMsg);
+      logger.error("Error details:", errorStack);
       return false;
     }
   }
@@ -55,7 +77,8 @@ let currentLevel: string = "level_2_intel";
 async function getAgent(level?: string) {
   // Try to load modules if not already loaded
   if (!initializeAgent) {
-    if (!loadAgentModules()) {
+    const loaded = await loadAgentModules();
+    if (!loaded) {
       throw new Error("Agent initialization module not available - decorator metadata issue");
     }
   }
@@ -71,11 +94,13 @@ async function getAgent(level?: string) {
       levelManager.setLevel(level);
     }
     try {
+      logger.info(`Initializing agent at level: ${currentLevel}`);
       agentInstance = await initializeAgent(currentLevel);
       agentInitialized = true;
       logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
     } catch (error) {
       logger.error("Failed to initialize agent", error);
+      agentInitialized = false;
       throw error;
     }
   }
@@ -202,22 +227,35 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
+    // Ensure modules are loaded
+    if (!HumanMessage || !initializeAgent) {
+      await loadAgentModules();
+    }
+    
     if (!agentInitialized) {
       // Try to load and initialize agent
       try {
         await getAgent();
       } catch (error) {
+        logger.error("Agent initialization error in chat endpoint:", error);
         return res.status(503).json({
           error: "Agent not initialized",
-          message: "Agent initialization failed. This may be due to decorator metadata issues with tsx. Please check server logs.",
+          message: "Agent initialization failed. Please check server logs for details.",
           details: error instanceof Error ? error.message : String(error),
         });
       }
     }
 
     const { agent, config } = await getAgent();
+    
     if (!HumanMessage) {
-      loadAgentModules();
+      await loadAgentModules();
+      if (!HumanMessage) {
+        return res.status(503).json({
+          error: "Missing dependencies",
+          message: "HumanMessage class not available. Please check server logs.",
+        });
+      }
     }
     
     const configWithThread = {
@@ -754,13 +792,7 @@ app.get("/", (req, res) => {
             <h1>🔒 NetWatch</h1>
             <p>Cybersecurity Agent for Blockchain Threat Detection</p>
             <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
-                <div>
-                    <span class="status-indicator" id="statusIndicator"></span>
-                    <span id="statusText" style="color: #e0e8f0; background: transparent;">Checking status...</span>
-                </div>
-                <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                    <label style="color: #e0e8f0; font-size: 0.9em; font-weight: 500;">Level:</label>
-                    <div class="level-checkboxes">
+                <div class="level-checkboxes">
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_2_intel" name="level" value="level_2_intel" onchange="switchLevel()">
                             <label for="level_2_intel">search</label>
@@ -777,7 +809,6 @@ app.get("/", (req, res) => {
                             <input type="radio" id="level_4b_x402" name="level" value="level_4b_x402" onchange="switchLevel()">
                             <label for="level_4b_x402">x402</label>
                         </div>
-                    </div>
                 </div>
             </div>
             <div id="levelInfo" style="margin-top: 10px; font-size: 0.85em; opacity: 0.9;"></div>
@@ -857,7 +888,7 @@ app.get("/", (req, res) => {
                 </div>
                 <div class="chat-input">
                     <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses..." onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
-                    <button onclick="sendMessage()" id="sendButton">Send</button>
+                    <button type="button" onclick="sendMessage()" id="sendButton" style="cursor: pointer;">Send</button>
                 </div>
                 <div style="margin-top: 10px; text-align: center; font-size: 0.85em; color: #8a98a8; font-family: 'Courier New', monospace;">
                     <span id="agentStatus">Agent Status: Checking...</span>
@@ -883,10 +914,24 @@ app.get("/", (req, res) => {
         // Wallet connection functions
         function toggleWalletMenu() {
             const menu = document.getElementById('walletMenu');
+            const btn = document.getElementById('connectWalletBtn');
+            
             if (connectedWallet) {
-                return; // Don't show menu if already connected
+                // If connected, show disconnect option or do nothing
+                return;
             }
-            menu.classList.toggle('show');
+            
+            // Toggle menu visibility
+            if (menu.classList.contains('show')) {
+                menu.classList.remove('show');
+            } else {
+                menu.classList.add('show');
+                // Focus first option for keyboard navigation
+                setTimeout(() => {
+                    const firstOption = menu.querySelector('.wallet-option');
+                    if (firstOption) firstOption.focus();
+                }, 100);
+            }
         }
         
         // Close wallet menu when clicking outside
@@ -898,6 +943,14 @@ app.get("/", (req, res) => {
             }
         });
         
+        // Close menu on Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                const menu = document.getElementById('walletMenu');
+                if (menu) menu.classList.remove('show');
+            }
+        });
+        
         async function connectEVMWallet(type) {
             document.getElementById('walletMenu').classList.remove('show');
             
@@ -905,27 +958,81 @@ app.get("/", (req, res) => {
                 let provider;
                 let walletName;
                 
-                if (type === 'metamask' || type === 'injected') {
+                // Check for MetaMask
+                if (type === 'metamask') {
                     if (typeof window.ethereum === 'undefined') {
-                        alert('Please install MetaMask or another EVM wallet extension');
+                        alert('MetaMask not detected. Please install MetaMask extension from https://metamask.io');
+                        window.open('https://metamask.io/download/', '_blank');
                         return;
                     }
+                    // Detect MetaMask specifically
+                    if (window.ethereum.isMetaMask) {
+                        walletName = 'MetaMask';
+                    } else {
+                        walletName = 'EVM Wallet';
+                    }
                     provider = new ethers.providers.Web3Provider(window.ethereum);
-                    walletName = type === 'metamask' ? 'MetaMask' : 'EVM Wallet';
                     
-                    // Request account access
+                    // Request account access - this will trigger MetaMask popup
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
-                } else if (type === 'coinbase') {
-                    if (typeof window.ethereum === 'undefined' || !window.ethereum.isCoinbaseWallet) {
-                        alert('Please install Coinbase Wallet extension');
+                } 
+                // Check for Coinbase Wallet
+                else if (type === 'coinbase') {
+                    if (typeof window.ethereum === 'undefined') {
+                        alert('Coinbase Wallet not detected. Please install Coinbase Wallet extension.');
+                        window.open('https://www.coinbase.com/wallet', '_blank');
                         return;
                     }
+                    // Coinbase Wallet detection
+                    if (window.ethereum.isCoinbaseWallet) {
+                        walletName = 'Coinbase Wallet';
+                    } else if (window.ethereum.providers) {
+                        // Coinbase Wallet might be in providers array
+                        const coinbaseProvider = window.ethereum.providers.find(p => p.isCoinbaseWallet);
+                        if (coinbaseProvider) {
+                            provider = new ethers.providers.Web3Provider(coinbaseProvider);
+                            walletName = 'Coinbase Wallet';
+                            await coinbaseProvider.request({ method: 'eth_requestAccounts' });
+                        } else {
+                            alert('Coinbase Wallet not found. Please install Coinbase Wallet extension.');
+                            return;
+                        }
+                    } else {
+                        alert('Coinbase Wallet not detected. Please install Coinbase Wallet extension.');
+                        return;
+                    }
+                    if (!provider) {
+                        provider = new ethers.providers.Web3Provider(window.ethereum);
+                        await window.ethereum.request({ method: 'eth_requestAccounts' });
+                    }
+                } 
+                // Generic injected wallet
+                else if (type === 'injected') {
+                    if (typeof window.ethereum === 'undefined') {
+                        alert('No EVM wallet detected. Please install MetaMask, Coinbase Wallet, or another EVM-compatible wallet.');
+                        return;
+                    }
+                    // Try to detect wallet type
+                    if (window.ethereum.isMetaMask) {
+                        walletName = 'MetaMask';
+                    } else if (window.ethereum.isCoinbaseWallet) {
+                        walletName = 'Coinbase Wallet';
+                    } else if (window.ethereum.isBraveWallet) {
+                        walletName = 'Brave Wallet';
+                    } else {
+                        walletName = 'EVM Wallet';
+                    }
                     provider = new ethers.providers.Web3Provider(window.ethereum);
-                    walletName = 'Coinbase Wallet';
                     await window.ethereum.request({ method: 'eth_requestAccounts' });
-                } else if (type === 'walletconnect') {
+                } 
+                // WalletConnect (placeholder)
+                else if (type === 'walletconnect') {
                     alert('WalletConnect integration coming soon! For now, please use MetaMask or another injected wallet.');
                     return;
+                }
+                
+                if (!provider) {
+                    throw new Error('Failed to initialize wallet provider');
                 }
                 
                 const signer = provider.getSigner();
@@ -937,7 +1044,7 @@ app.get("/", (req, res) => {
                     name: walletName,
                     address: address,
                     network: network.name,
-                    chainId: network.chainId
+                    chainId: network.chainId.toString()
                 };
                 
                 walletProvider = provider;
@@ -945,16 +1052,19 @@ app.get("/", (req, res) => {
                 
                 // Send wallet info to backend
                 try {
-                    await fetch('/api/wallet/connect', {
+                    const response = await fetch('/api/wallet/connect', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 'EVM',
                             address: address,
                             network: network.name,
-                            chainId: network.chainId.toString()
+                            chainId: network.chainId.toString(),
+                            name: walletName
                         })
                     });
+                    const result = await response.json();
+                    console.log('Wallet connection confirmed:', result);
                 } catch (error) {
                     console.warn('Failed to send wallet info to backend:', error);
                 }
@@ -962,7 +1072,11 @@ app.get("/", (req, res) => {
                 addMessage('agent', \`✅ Connected to \${walletName}: \${address.substring(0, 6)}...\${address.substring(38)}\`);
             } catch (error) {
                 console.error('Error connecting EVM wallet:', error);
-                alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+                if (error.code === 4001) {
+                    alert('Connection rejected. Please approve the connection request in your wallet.');
+                } else {
+                    alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+                }
             }
         }
         
@@ -970,63 +1084,87 @@ app.get("/", (req, res) => {
             document.getElementById('walletMenu').classList.remove('show');
             
             try {
+                // Wait a bit for extension to be available
+                await new Promise(resolve => setTimeout(resolve, 100));
+                
                 // Check if Polkadot extension is available
                 if (typeof window.injectedWeb3 === 'undefined') {
-                    alert('Please install Polkadot.js extension or Talisman wallet');
+                    alert('Polkadot wallet extension not detected.\\n\\nPlease install:\\n• Polkadot.js: https://polkadot.js.org/extension/\\n• Talisman: https://talisman.xyz/');
                     return;
                 }
                 
                 let extension;
                 let walletName;
                 
-                if (type === 'talisman' && window.injectedWeb3['talisman']) {
-                    extension = window.injectedWeb3['talisman'];
-                    walletName = 'Talisman';
-                } else if (window.injectedWeb3['polkadot-js']) {
+                // Try Talisman first if requested
+                if (type === 'talisman') {
+                    if (window.injectedWeb3['talisman']) {
+                        extension = window.injectedWeb3['talisman'];
+                        walletName = 'Talisman';
+                    } else {
+                        alert('Talisman wallet not found. Please install Talisman extension from https://talisman.xyz/');
+                        window.open('https://talisman.xyz/', '_blank');
+                        return;
+                    }
+                } 
+                // Try Polkadot.js
+                else if (window.injectedWeb3['polkadot-js']) {
                     extension = window.injectedWeb3['polkadot-js'];
                     walletName = 'Polkadot.js';
-                } else {
-                    // Try to use any available extension
+                } 
+                // Try Talisman as fallback
+                else if (window.injectedWeb3['talisman']) {
+                    extension = window.injectedWeb3['talisman'];
+                    walletName = 'Talisman';
+                } 
+                // Try any available extension
+                else {
                     const available = Object.keys(window.injectedWeb3);
                     if (available.length === 0) {
-                        alert('No Polkadot wallet extension found');
+                        alert('No Polkadot wallet extension found.\\n\\nPlease install:\\n• Polkadot.js: https://polkadot.js.org/extension/\\n• Talisman: https://talisman.xyz/');
                         return;
                     }
                     extension = window.injectedWeb3[available[0]];
-                    walletName = available[0];
+                    walletName = available[0].charAt(0).toUpperCase() + available[0].slice(1);
                 }
                 
-                const injector = await extension.enable('VeriSense');
+                // Enable extension - this will trigger wallet popup
+                const injector = await extension.enable('NetWatch');
+                
+                // Get accounts - wallet popup should have appeared
                 const accounts = await injector.accounts.get();
                 
                 if (accounts.length === 0) {
-                    alert('No accounts found. Please create an account in your wallet.');
+                    alert('No accounts found. Please create an account in your ' + walletName + ' wallet.');
                     return;
                 }
                 
-                // Use first account
+                // Use first account (in production, you might want to let user select)
                 const account = accounts[0];
                 
                 connectedWallet = {
                     type: 'Polkadot',
                     name: walletName,
                     address: account.address,
-                    name: account.name || 'Unnamed'
+                    accountName: account.name || 'Unnamed'
                 };
                 
                 updateWalletUI();
                 
                 // Send wallet info to backend
                 try {
-                    await fetch('/api/wallet/connect', {
+                    const response = await fetch('/api/wallet/connect', {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             type: 'Polkadot',
                             address: account.address,
-                            name: account.name
+                            name: account.name || 'Unnamed',
+                            walletName: walletName
                         })
                     });
+                    const result = await response.json();
+                    console.log('Wallet connection confirmed:', result);
                 } catch (error) {
                     console.warn('Failed to send wallet info to backend:', error);
                 }
@@ -1034,7 +1172,11 @@ app.get("/", (req, res) => {
                 addMessage('agent', \`✅ Connected to \${walletName}: \${account.address.substring(0, 6)}...\${account.address.substring(account.address.length - 6)}\`);
             } catch (error) {
                 console.error('Error connecting Polkadot wallet:', error);
-                alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+                if (error.message && error.message.includes('Rejected')) {
+                    alert('Connection rejected. Please approve the connection request in your wallet.');
+                } else {
+                    alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
+                }
             }
         }
         
@@ -1053,6 +1195,8 @@ app.get("/", (req, res) => {
                 info.style.display = 'block';
                 typeSpan.textContent = \`\${connectedWallet.name} (\${connectedWallet.type})\`;
                 addressSpan.textContent = connectedWallet.address;
+                addressSpan.style.fontFamily = "'Courier New', monospace";
+                addressSpan.style.wordBreak = 'break-all';
             } else {
                 btn.textContent = '🔗 Connect Wallet';
                 btn.style.background = 'rgba(0, 255, 255, 0.1)';
@@ -1091,11 +1235,7 @@ app.get("/", (req, res) => {
             try {
                 const response = await fetch('/health');
                 const data = await response.json();
-                document.getElementById('statusIndicator').className = 'status-indicator ' + (data.agentInitialized ? 'status-online' : 'status-offline');
-                const statusTextEl = document.getElementById('statusText');
-                statusTextEl.textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
-                statusTextEl.style.color = '#e0e8f0';
-                statusTextEl.style.background = 'transparent';
+                // Status indicator removed per user request
                 
                 // Update level checkboxes
                 if (data.currentLevel) {
@@ -1127,11 +1267,7 @@ app.get("/", (req, res) => {
                     }
                 }
             } catch (error) {
-                document.getElementById('statusIndicator').className = 'status-indicator status-offline';
-                const statusTextEl = document.getElementById('statusText');
-                statusTextEl.textContent = 'Connection Error';
-                statusTextEl.style.color = '#e0e8f0';
-                statusTextEl.style.background = 'transparent';
+                // Status indicator removed per user request
                 const agentStatus = document.getElementById('agentStatus');
                 if (agentStatus) {
                     agentStatus.innerHTML = '<span style="color: #ff4444;">✗ Connection Error</span>';
@@ -1184,24 +1320,42 @@ app.get("/", (req, res) => {
         }
 
         async function sendMessage() {
-            const input = document.getElementById('messageInput');
-            const message = input.value.trim();
-            if (!message) return;
-
-            const sendButton = document.getElementById('sendButton');
-            sendButton.disabled = true;
-            sendButton.textContent = 'Sending...';
-
-            // Add user message to chat
-            addMessage('user', message);
-            input.value = '';
-
             try {
+                const input = document.getElementById('messageInput');
+                if (!input) {
+                    console.error('Message input not found');
+                    return;
+                }
+                
+                const message = input.value.trim();
+                if (!message) {
+                    console.log('Empty message, ignoring');
+                    return;
+                }
+
+                const sendButton = document.getElementById('sendButton');
+                if (!sendButton) {
+                    console.error('Send button not found');
+                    return;
+                }
+                
+                sendButton.disabled = true;
+                sendButton.textContent = 'Sending...';
+
+                // Add user message to chat
+                addMessage('user', message);
+                input.value = '';
+
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message, threadId })
                 });
+
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errorData.error || \`HTTP \${response.status}\`);
+                }
 
                 const data = await response.json();
                 if (data.response) {
@@ -1210,13 +1364,20 @@ app.get("/", (req, res) => {
                     addMessage('agent', 'Error: ' + (data.error || 'Unknown error'));
                 }
             } catch (error) {
-                addMessage('agent', 'Error: Failed to send message. ' + error.message);
+                console.error('Error sending message:', error);
+                addMessage('agent', 'Error: Failed to send message. ' + (error.message || 'Unknown error'));
             } finally {
-                sendButton.disabled = false;
-                sendButton.textContent = 'Send';
+                const sendButton = document.getElementById('sendButton');
+                if (sendButton) {
+                    sendButton.disabled = false;
+                    sendButton.textContent = 'Send';
+                }
                 refreshAnalytics();
             }
         }
+        
+        // Make sendMessage available globally
+        window.sendMessage = sendMessage;
 
         function addMessage(type, content) {
             const messagesDiv = document.getElementById('chatMessages');
@@ -1325,7 +1486,7 @@ app.get("/", (req, res) => {
 async function startServer() {
   // Start server even if agent initialization fails
   app.listen(PORT, () => {
-    logger.info(`🚀 VeriSense Server running on http://localhost:${PORT}`);
+    logger.info(`🚀 NetWatch Server running on http://localhost:${PORT}`);
     logger.info(`📊 Web Interface: http://localhost:${PORT}`);
     logger.info(`🔌 API Endpoints:`);
     logger.info(`   POST /api/chat - Chat with agent`);
