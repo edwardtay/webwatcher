@@ -358,7 +358,7 @@ app.get("/", (req, res) => {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NetWatch - Cybersecurity Agent</title>
+    <title>VeriSense - Cybersecurity Agent</title>
     <style>
         * {
             margin: 0;
@@ -957,7 +957,7 @@ app.get("/", (req, res) => {
                     walletName = available[0];
                 }
                 
-                const injector = await extension.enable('NetWatch');
+                const injector = await extension.enable('VeriSense');
                 const accounts = await injector.accounts.get();
                 
                 if (accounts.length === 0) {
@@ -1259,7 +1259,7 @@ app.get("/", (req, res) => {
                 Built with <span style="color: #FFD700;">⚡</span> 
                 <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">AgentKit</a>
                 and <span style="color: #FFD700;">🔒</span>
-                <a href="https://github.com/yourusername/netwatch-agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">NetWatch</a>
+                <a href="https://verisense.network" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">VeriSense</a>
             </div>
             <div style="opacity: 0.9; font-size: 0.9em;">
                 Made with <span style="color: #ff6b9d;">❤️</span> by 
@@ -1276,7 +1276,7 @@ app.get("/", (req, res) => {
 async function startServer() {
   // Start server even if agent initialization fails
   app.listen(PORT, () => {
-    logger.info(`🚀 NetWatch Server running on http://localhost:${PORT}`);
+    logger.info(`🚀 VeriSense Server running on http://localhost:${PORT}`);
     logger.info(`📊 Web Interface: http://localhost:${PORT}`);
     logger.info(`🔌 API Endpoints:`);
     logger.info(`   POST /api/chat - Chat with agent`);

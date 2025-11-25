@@ -144,7 +144,7 @@ export class LevelManager {
 
   getSystemPrompt(): string {
     const capabilities = this.getCapabilities();
-    let prompt = `You are VeriSense, an advanced cybersecurity agent specialized in blockchain security monitoring and threat detection.
+    let prompt = `You are NetWatch, an advanced cybersecurity agent built on VeriSense, specialized in blockchain security monitoring and threat detection.
 You are operating at ${this.currentLevel} level.
 
 ${LEVEL_CAPABILITIES[this.currentLevel].description}

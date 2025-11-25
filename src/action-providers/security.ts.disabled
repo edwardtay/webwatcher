@@ -48,7 +48,10 @@ export class SecurityActionProvider extends ActionProvider<WalletProvider> {
   })
   async monitorTransaction(
     walletProvider: WalletProvider,
-    args: { transactionHash: string; address?: string },
+    args: z.infer<typeof z.object({
+      transactionHash: z.string().describe("The transaction hash to monitor"),
+      address: z.string().optional().describe("Optional: specific address to monitor"),
+    })>,
   ): Promise<string> {
     try {
       const walletDetails = await walletProvider.getWalletDetails();

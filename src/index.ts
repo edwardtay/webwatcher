@@ -13,40 +13,63 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import * as dotenv from "dotenv";
 import * as readline from "readline";
-import { securityActionProvider } from "./action-providers/security";
+// // SecurityActionProvider temporarily disabled due to decorator metadata issue
+// import { securityActionProvider } from "./action-providers/security"; // Temporarily disabled due to decorator metadata issue
+import { level1LocalActionProvider } from "./action-providers/level1-local";
+import { level2IntelActionProvider } from "./action-providers/level2-intel";
+import { level3McpActionProvider } from "./action-providers/level3-mcp";
+import { level4AA2AActionProvider } from "./action-providers/level4a-a2a";
+import { level4BX402ActionProvider } from "./action-providers/level4b-x402";
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
+import { levelManager, AnalystLevel } from "./utils/level-manager";
 
 dotenv.config();
 
 /**
  * Validates that required environment variables are set
+ * For Level 1 (local/air-gapped), only OpenAI key is required
  */
 function validateEnvironment(): void {
   const missingVars: string[] = [];
 
-  const requiredVars = [
-    "OPENAI_API_KEY",
-    "CDP_API_KEY_ID",
-    "CDP_API_KEY_SECRET",
-    "CDP_WALLET_SECRET",
-  ];
+  // OpenAI key is always required
+  if (!process.env.OPENAI_API_KEY) {
+    missingVars.push("OPENAI_API_KEY");
+  }
 
-  requiredVars.forEach((varName) => {
-    if (!process.env[varName]) {
-      missingVars.push(varName);
-    }
-  });
+  // Check current level - if Level 1, CDP keys are optional
+  const level = process.env.ANALYST_LEVEL?.toLowerCase() || "level_1_local";
+  const isLevel1 = level === "1" || level === "level_1" || level === "local" || level === "level_1_local";
+
+  // CDP keys only required for levels 2+
+  if (!isLevel1) {
+    const cdpVars = [
+      "CDP_API_KEY_ID",
+      "CDP_API_KEY_SECRET",
+      "CDP_WALLET_SECRET",
+    ];
+
+    cdpVars.forEach((varName) => {
+      if (!process.env[varName]) {
+        missingVars.push(varName);
+      }
+    });
+  }
 
   if (missingVars.length > 0) {
     logger.error("Required environment variables are not set");
     missingVars.forEach((varName) => {
       console.error(`${varName}=your_${varName.toLowerCase()}_here`);
     });
-    process.exit(1);
+    if (!isLevel1) {
+      process.exit(1);
+    } else {
+      logger.warn("Level 1 mode: CDP keys not required, but some features will be unavailable");
+    }
   }
 
-  if (!process.env.NETWORK_ID) {
+  if (!process.env.NETWORK_ID && !isLevel1) {
     logger.warn("NETWORK_ID not set, defaulting to base-sepolia testnet");
   }
 }
@@ -54,11 +77,21 @@ function validateEnvironment(): void {
 validateEnvironment();
 
 /**
- * Initialize the VeriSense cybersecurity agent with AgentKit
+ * Initialize the NetWatch cybersecurity agent with AgentKit (built on VeriSense)
+ * @param level Optional analyst level (defaults to environment variable or LEVEL_1_LOCAL)
  */
-export async function initializeAgent() {
+export async function initializeAgent(level?: AnalystLevel) {
   try {
-    logger.info("Initializing VeriSense Cybersecurity Agent...");
+    // Set level if provided
+    if (level) {
+      levelManager.setLevel(level);
+    }
+    
+    const currentLevel = levelManager.getCurrentLevel();
+    const capabilities = levelManager.getCapabilities();
+    
+    logger.info(`Initializing NetWatch Agent (VeriSense) at ${currentLevel}...`);
+    logger.info(`Capabilities: ${capabilities.description}`);
 
     // Initialize LLM
     const llm = new ChatOpenAI({
@@ -66,106 +99,117 @@ export async function initializeAgent() {
       temperature: 0.3, // Lower temperature for more consistent security analysis
     });
 
-    // Configure CDP Wallet Provider
-    const networkId = process.env.NETWORK_ID || "base-sepolia";
-    logger.info(`Using network: ${networkId}`);
+    // Configure CDP Wallet Provider (only if network access is needed)
+    let walletProvider: any = null;
+    let walletDetails: any = null;
+    
+    if (capabilities.networkAccess || capabilities.payments) {
+      const networkId = process.env.NETWORK_ID || "base-sepolia";
+      logger.info(`Using network: ${networkId}`);
 
-    const cdpWalletConfig = {
-      apiKeyId: process.env.CDP_API_KEY_ID!,
-      apiKeySecret: process.env.CDP_API_KEY_SECRET!,
-      walletSecret: process.env.CDP_WALLET_SECRET!,
-      idempotencyKey: process.env.IDEMPOTENCY_KEY,
-      address: process.env.ADDRESS as `0x${string}` | undefined,
-      networkId,
-      rpcUrl: process.env.RPC_URL,
-    };
-
-    const walletProvider = await CdpEvmWalletProvider.configureWithWallet(
-      cdpWalletConfig,
-    );
-
-    const walletDetails = await walletProvider.getWalletDetails();
-    logger.info(`Wallet initialized: ${walletDetails.address}`);
-
-    // Initialize action providers including custom security provider
-    const actionProviders = [
-      walletActionProvider(),
-      cdpApiActionProvider({
+      const cdpWalletConfig = {
         apiKeyId: process.env.CDP_API_KEY_ID!,
-        apiKeyPrivate: process.env.CDP_API_KEY_SECRET!,
-      }),
-      cdpEvmWalletActionProvider(),
-      erc20ActionProvider(),
-      securityActionProvider(), // Custom cybersecurity actions
-    ];
+        apiKeySecret: process.env.CDP_API_KEY_SECRET!,
+        walletSecret: process.env.CDP_WALLET_SECRET!,
+        idempotencyKey: process.env.IDEMPOTENCY_KEY,
+        address: process.env.ADDRESS as `0x${string}` | undefined,
+        networkId,
+        rpcUrl: process.env.RPC_URL,
+      };
 
-    // Initialize AgentKit
-    const agentkit = await AgentKit.from({
-      walletProvider,
-      actionProviders,
-    });
+      walletProvider = await CdpEvmWalletProvider.configureWithWallet(
+        cdpWalletConfig,
+      );
 
-    const tools = await getLangChainTools(agentkit);
-    logger.info(`Loaded ${tools.length} tools for the agent`);
+      walletDetails = await walletProvider.getWalletDetails();
+      logger.info(`Wallet initialized: ${walletDetails.address}`);
+    } else {
+      logger.info("Level 1 mode: No network access, wallet not initialized");
+    }
+
+    // Initialize action providers based on level
+    const actionProviders: any[] = [];
+    
+    // Base blockchain providers (only if network access available and CDP keys are set)
+    if (capabilities.networkAccess && walletProvider && process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET) {
+      try {
+        actionProviders.push(
+          walletActionProvider(),
+          cdpApiActionProvider({
+            apiKeyId: process.env.CDP_API_KEY_ID!,
+            apiKeyPrivate: process.env.CDP_API_KEY_SECRET!,
+          }),
+          cdpEvmWalletActionProvider(),
+          erc20ActionProvider(),
+        );
+        // Note: securityActionProvider() is disabled due to decorator metadata issue
+        // Use level-specific providers instead
+      } catch (error) {
+        logger.warn("Failed to load some blockchain providers:", error);
+      }
+    }
+    
+    // Level-specific providers
+    actionProviders.push(level1LocalActionProvider()); // Always available
+    
+    if (capabilities.webSearch) {
+      actionProviders.push(level2IntelActionProvider());
+    }
+    
+    if (capabilities.mcpTools) {
+      actionProviders.push(level3McpActionProvider());
+    }
+    
+    if (capabilities.a2aCoordination) {
+      actionProviders.push(level4AA2AActionProvider());
+    }
+    
+    if (capabilities.payments) {
+      actionProviders.push(level4BX402ActionProvider());
+    }
+
+    // Initialize AgentKit (only if wallet provider exists)
+    let agentkit: any = null;
+    let tools: any[] = [];
+    
+    if (walletProvider && actionProviders.length > 0) {
+      try {
+        agentkit = await AgentKit.from({
+          walletProvider,
+          actionProviders,
+        });
+        tools = await getLangChainTools(agentkit);
+      } catch (error) {
+        logger.warn("Failed to initialize AgentKit with wallet:", error);
+        logger.info("Continuing with Level 1 local tools only");
+      }
+    } else {
+      // For Level 1, we can work without AgentKit
+      logger.info("Level 1 mode: Using local tools only (no AgentKit wallet required)");
+      // Tools will be empty, but the agent can still use Level 1 action providers
+      // We'll need to manually register them or use a different approach
+    }
+
+    logger.info(`Loaded ${tools.length} tools for the agent at ${currentLevel}`);
 
     // Store conversation history in memory
     const memory = new MemorySaver();
     const agentConfig = {
-      configurable: { thread_id: "verisense-cybersecurity-agent" },
+      configurable: { thread_id: `verisense-netwatch-${currentLevel}-${Date.now()}` },
     };
 
-    // Create React Agent with cybersecurity-focused system prompt
+    // Create React Agent with level-specific system prompt
+    const systemPrompt = levelManager.getSystemPrompt();
+    
     const agent = createReactAgent({
       llm,
-      tools,
+      tools: tools.length > 0 ? tools : [], // Empty tools array if no wallet provider
       checkpointSaver: memory,
-      messageModifier: `
-        You are VeriSense, an advanced cybersecurity agent specialized in blockchain security monitoring and threat detection.
-        Your primary responsibilities include:
-        
-        1. **Transaction Monitoring**: Analyze blockchain transactions for suspicious patterns, including:
-           - Unusually large transfers
-           - Rapid transaction sequences
-           - Failed or reverted transactions
-           - High gas usage anomalies
-        
-        2. **Address Analysis**: Evaluate addresses for security risks:
-           - Contract vs EOA verification
-           - Balance anomalies
-           - Transaction history patterns
-           - Known threat indicators
-        
-        3. **Wallet Security**: Monitor and protect the agent's wallet:
-           - Balance monitoring
-           - Unauthorized access detection
-           - Security status reporting
-        
-        4. **Threat Detection**: Identify potential security threats:
-           - Phishing attempts
-           - Scam addresses
-           - Suspicious contract interactions
-           - Unusual activity patterns
-        
-        When analyzing security events:
-        - Always provide risk scores and severity levels
-        - Recommend appropriate actions based on threat level
-        - Log security events for analytics
-        - Be proactive in identifying potential threats
-        
-        If you detect HIGH or CRITICAL risk events, immediately alert the user and recommend defensive actions.
-        For MEDIUM risk events, provide detailed analysis and monitoring recommendations.
-        For LOW risk events, log them but proceed normally.
-        
-        You have access to blockchain monitoring tools, transaction analysis capabilities, and address verification tools.
-        Use these tools proactively to maintain security posture.
-        
-        Before executing any onchain actions, verify the security implications and get user confirmation for high-risk operations.
-        Always prioritize security over convenience.
-      `,
+      messageModifier: systemPrompt,
     });
 
-    logger.info("Agent initialized successfully");
-    return { agent, config: agentConfig };
+    logger.info(`Agent initialized successfully at ${currentLevel}`);
+    return { agent, config: agentConfig, level: currentLevel, capabilities };
   } catch (error) {
     logger.error("Failed to initialize agent", error);
     throw error;
@@ -223,8 +267,17 @@ async function runMonitoringMode(
  * Run the agent interactively in chat mode
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runChatMode(agent: any, config: any) {
-  logger.info("Starting chat mode... Type 'exit' to end, 'summary' for security summary");
+async function runChatMode(agent: any, config: any, level: AnalystLevel, capabilities: any) {
+  logger.info(`Starting chat mode at ${level}...`);
+  console.log(`\n=== NetWatch Agent (Built on VeriSense) ===`);
+  console.log(`Current Level: ${level}`);
+  console.log(`Capabilities: ${capabilities.description}`);
+  console.log("\nCommands:");
+  console.log("  'exit' - Exit chat mode");
+  console.log("  'summary' - Show security analytics summary");
+  console.log("  'level' - Show current level and capabilities");
+  console.log("  'switch <level>' - Switch to different level (1, 2, 3, 4a, 4b)");
+  console.log("\nType your security analysis questions below:\n");
 
   const rl = readline.createInterface({
     input: process.stdin,
@@ -234,10 +287,15 @@ async function runChatMode(agent: any, config: any) {
   const question = (prompt: string): Promise<string> =>
     new Promise((resolve) => rl.question(prompt, resolve));
 
+  let currentAgent = agent;
+  let currentConfig = config;
+  let currentLevel = level;
+  let currentCapabilities = capabilities;
+
   try {
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const userInput = await question("\n[VeriSense] > ");
+      const userInput = await question(`\n[NetWatch ${currentLevel}] > `);
 
       if (userInput.toLowerCase() === "exit") {
         break;
@@ -250,9 +308,73 @@ async function runChatMode(agent: any, config: any) {
         continue;
       }
 
-      const stream = await agent.stream(
+      if (userInput.toLowerCase() === "level") {
+        console.log(`\nCurrent Level: ${currentLevel}`);
+        console.log(`Description: ${currentCapabilities.description}`);
+        console.log(`Network Access: ${currentCapabilities.networkAccess ? "Yes" : "No"}`);
+        console.log(`Web Search: ${currentCapabilities.webSearch ? "Yes" : "No"}`);
+        console.log(`MCP Tools: ${currentCapabilities.mcpTools ? "Yes" : "No"}`);
+        console.log(`A2A Coordination: ${currentCapabilities.a2aCoordination ? "Yes" : "No"}`);
+        console.log(`Payments: ${currentCapabilities.payments ? "Yes" : "No"}`);
+        continue;
+      }
+
+      if (userInput.toLowerCase().startsWith("switch ")) {
+        const levelArg = userInput.toLowerCase().replace("switch ", "").trim();
+        let newLevel: AnalystLevel | null = null;
+        
+        switch (levelArg) {
+          case "1":
+          case "level_1":
+          case "local":
+            newLevel = AnalystLevel.LEVEL_1_LOCAL;
+            break;
+          case "2":
+          case "level_2":
+          case "intel":
+            newLevel = AnalystLevel.LEVEL_2_INTEL;
+            break;
+          case "3":
+          case "level_3":
+          case "tools":
+            newLevel = AnalystLevel.LEVEL_3_TOOLS;
+            break;
+          case "4a":
+          case "level_4a":
+          case "a2a":
+            newLevel = AnalystLevel.LEVEL_4A_A2A;
+            break;
+          case "4b":
+          case "level_4b":
+          case "x402":
+            newLevel = AnalystLevel.LEVEL_4B_X402;
+            break;
+          default:
+            console.log(`Unknown level: ${levelArg}`);
+            console.log("Available levels: 1, 2, 3, 4a, 4b");
+            continue;
+        }
+
+        if (newLevel) {
+          console.log(`\nSwitching to ${newLevel}...`);
+          try {
+            const { agent: newAgent, config: newConfig, level: newLvl, capabilities: newCaps } = await initializeAgent(newLevel);
+            currentAgent = newAgent;
+            currentConfig = newConfig;
+            currentLevel = newLvl;
+            currentCapabilities = newCaps;
+            console.log(`Successfully switched to ${newLvl}`);
+            console.log(`Capabilities: ${newCaps.description}`);
+          } catch (error) {
+            console.error(`Failed to switch level: ${error instanceof Error ? error.message : String(error)}`);
+          }
+        }
+        continue;
+      }
+
+      const stream = await currentAgent.stream(
         { messages: [new HumanMessage(userInput)] },
-        config,
+        currentConfig,
       );
 
       for await (const chunk of stream) {
@@ -285,7 +407,7 @@ async function chooseMode(): Promise<"chat" | "monitor"> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    console.log("\n=== VeriSense Cybersecurity Agent ===");
+    console.log("\n=== NetWatch Agent (Built on VeriSense) ===");
     console.log("Available modes:");
     console.log("1. chat    - Interactive security analysis mode");
     console.log("2. monitor - Continuous security monitoring mode");
@@ -310,17 +432,17 @@ async function chooseMode(): Promise<"chat" | "monitor"> {
  */
 async function main() {
   try {
-    logger.info("=== VeriSense Cybersecurity Agent ===");
+    logger.info("=== NetWatch Agent (Built on VeriSense) ===");
     logger.info("Starting agent initialization...");
 
-    const { agent, config } = await initializeAgent();
+    const { agent, config, level, capabilities } = await initializeAgent();
     const mode = await chooseMode();
 
     const intervalSeconds =
       parseInt(process.env.MONITORING_INTERVAL_SECONDS || "30", 10) || 30;
 
     if (mode === "chat") {
-      await runChatMode(agent, config);
+      await runChatMode(agent, config, level, capabilities);
     } else {
       await runMonitoringMode(agent, config, intervalSeconds);
     }
