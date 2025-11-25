@@ -366,24 +366,31 @@ app.get("/", (req, res) => {
             box-sizing: border-box;
         }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            font-family: 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace;
+            background: #0a0e1a;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 255, 200, 0.03) 0%, transparent 50%);
             min-height: 100vh;
             padding: 20px;
+            color: #a0a8b8;
         }
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            background: white;
-            border-radius: 12px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            background: #0f1419;
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 255, 255, 0.05);
             overflow: hidden;
         }
         .header {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 200, 255, 0.08) 100%);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+            color: #e0e8f0;
             padding: 30px;
             text-align: center;
+            box-shadow: inset 0 -1px 0 rgba(0, 255, 255, 0.1);
         }
         .header h1 {
             font-size: 2.5em;
@@ -441,15 +448,15 @@ app.get("/", (req, res) => {
             width: 8px;
         }
         .chat-messages::-webkit-scrollbar-track {
-            background: #f1f1f1;
+            background: #0a0e14;
             border-radius: 4px;
         }
         .chat-messages::-webkit-scrollbar-thumb {
-            background: #667eea;
+            background: rgba(0, 255, 255, 0.3);
             border-radius: 4px;
         }
         .chat-messages::-webkit-scrollbar-thumb:hover {
-            background: #5568d3;
+            background: rgba(0, 255, 255, 0.5);
         }
         .message {
             margin-bottom: 15px;
@@ -477,32 +484,43 @@ app.get("/", (req, res) => {
         .chat-input input {
             flex: 1;
             padding: 14px 16px;
-            border: 2px solid #ddd;
-            border-radius: 8px;
+            background: #0a0e14;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 4px;
             font-size: 1em;
-            transition: border-color 0.3s;
+            color: #e0e8f0;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
         }
         .chat-input input:focus {
             outline: none;
-            border-color: #667eea;
-            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+            border-color: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1), 0 0 10px rgba(0, 255, 255, 0.1);
+            background: #0f1419;
+        }
+        .chat-input input::placeholder {
+            color: #5a6678;
         }
         .chat-input button {
             padding: 14px 28px;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            border: none;
-            border-radius: 8px;
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
             cursor: pointer;
             font-size: 1em;
             font-weight: bold;
+            font-family: 'Courier New', monospace;
             transition: all 0.3s;
-            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
         }
         .chat-input button:hover:not(:disabled) {
-            background: linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%);
+            background: rgba(0, 255, 255, 0.15);
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2), 0 2px 8px rgba(0, 255, 255, 0.15);
             transform: translateY(-1px);
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
         }
         .chat-input button:active:not(:disabled) {
             transform: translateY(0);
@@ -514,31 +532,34 @@ app.get("/", (req, res) => {
             box-shadow: none;
         }
         .analytics-card {
-            background: white;
-            border-radius: 8px;
+            background: #0a0e14;
+            border: 1px solid rgba(0, 255, 255, 0.1);
+            border-radius: 6px;
             padding: 15px;
             margin-bottom: 15px;
-            border: 1px solid #e0e0e0;
+            box-shadow: inset 0 1px 0 rgba(0, 255, 255, 0.05);
         }
         .analytics-card h3 {
-            color: #667eea;
+            color: #00d4ff;
             margin-bottom: 10px;
+            text-shadow: 0 0 8px rgba(0, 212, 255, 0.2);
         }
         .stat {
             display: flex;
             justify-content: space-between;
             padding: 8px 0;
-            border-bottom: 1px solid #f0f0f0;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.05);
         }
         .stat:last-child {
             border-bottom: none;
         }
         .stat-label {
-            color: #666;
+            color: #8a98a8;
         }
         .stat-value {
             font-weight: bold;
-            color: #333;
+            color: #00ffff;
+            font-family: 'Courier New', monospace;
         }
         .status-indicator {
             display: inline-block;
@@ -546,24 +567,31 @@ app.get("/", (req, res) => {
             height: 10px;
             border-radius: 50%;
             margin-right: 8px;
+            box-shadow: 0 0 6px currentColor;
         }
         .status-online {
-            background: #4caf50;
+            background: #00ff88;
+            color: #00ff88;
         }
         .status-offline {
-            background: #f44336;
+            background: #ff4444;
+            color: #ff4444;
         }
         .loading {
             text-align: center;
-            color: #666;
+            color: #6a7888;
             padding: 20px;
+            font-family: 'Courier New', monospace;
         }
         pre {
-            background: #f5f5f5;
+            background: #0a0e14;
+            border: 1px solid rgba(0, 255, 255, 0.1);
             padding: 10px;
             border-radius: 4px;
             overflow-x: auto;
             font-size: 0.9em;
+            color: #a0d0ff;
+            font-family: 'Courier New', monospace;
         }
         .level-checkboxes {
             display: flex;
@@ -578,34 +606,35 @@ app.get("/", (req, res) => {
             align-items: center;
             gap: 6px;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(0, 255, 255, 0.05);
+            border-radius: 4px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
             cursor: pointer;
             transition: all 0.3s;
         }
         .level-checkbox-wrapper:hover {
-            background: rgba(255, 255, 255, 0.25);
-            border-color: rgba(255, 255, 255, 0.5);
+            background: rgba(0, 255, 255, 0.1);
+            border-color: rgba(0, 255, 255, 0.4);
         }
         .level-checkbox-wrapper input[type="radio"] {
             width: 18px;
             height: 18px;
             cursor: pointer;
-            accent-color: #FFD700;
+            accent-color: #00ffff;
         }
         .level-checkbox-wrapper input[type="radio"]:checked {
-            accent-color: #4caf50;
+            accent-color: #00ff88;
         }
         .level-checkbox-wrapper label {
-            color: white;
+            color: #b0b8c8;
             font-size: 0.9em;
             cursor: pointer;
             user-select: none;
             margin: 0;
+            font-family: 'Courier New', monospace;
         }
         .level-checkbox-wrapper input[type="radio"]:checked + label {
-            color: #FFD700;
+            color: #00ffff;
             font-weight: 600;
         }
         .wallet-connect-section {
@@ -617,20 +646,24 @@ app.get("/", (req, res) => {
         }
         .connect-wallet-btn {
             padding: 10px 20px;
-            background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%);
-            color: #333;
-            border: none;
-            border-radius: 8px;
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
             font-size: 0.95em;
             font-weight: bold;
+            font-family: 'Courier New', monospace;
+            text-transform: uppercase;
+            letter-spacing: 1px;
             cursor: pointer;
             transition: all 0.3s;
-            box-shadow: 0 2px 8px rgba(255, 215, 0, 0.3);
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
         }
         .connect-wallet-btn:hover {
-            background: linear-gradient(135deg, #FFA500 0%, #FF8C00 100%);
+            background: rgba(0, 255, 255, 0.15);
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(255, 215, 0, 0.5);
         }
         .wallet-dropdown {
             position: relative;
@@ -643,9 +676,10 @@ app.get("/", (req, res) => {
             left: 50%;
             transform: translateX(-50%);
             margin-top: 8px;
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+            background: #0f1419;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 6px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 255, 255, 0.1);
             min-width: 200px;
             z-index: 1000;
             overflow: hidden;
@@ -656,23 +690,25 @@ app.get("/", (req, res) => {
         .wallet-option {
             padding: 12px 16px;
             cursor: pointer;
-            transition: background 0.2s;
-            border-bottom: 1px solid #f0f0f0;
+            transition: all 0.2s;
+            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
             display: flex;
             align-items: center;
             gap: 10px;
+            color: #b0b8c8;
         }
         .wallet-option:last-child {
             border-bottom: none;
         }
         .wallet-option:hover {
-            background: #f8f9fa;
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
         }
         .wallet-option.evm {
-            border-left: 3px solid #627EEA;
+            border-left: 3px solid rgba(0, 255, 255, 0.4);
         }
         .wallet-option.polkadot {
-            border-left: 3px solid #E6007A;
+            border-left: 3px solid rgba(0, 200, 255, 0.4);
         }
         .wallet-icon {
             font-size: 1.2em;
@@ -680,28 +716,35 @@ app.get("/", (req, res) => {
         .wallet-info {
             margin-top: 10px;
             padding: 8px 12px;
-            background: rgba(255, 255, 255, 0.15);
-            border-radius: 6px;
+            background: rgba(0, 255, 255, 0.05);
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            border-radius: 4px;
             font-size: 0.85em;
             text-align: center;
+            color: #b0b8c8;
+            font-family: 'Courier New', monospace;
         }
         .wallet-address {
-            font-family: monospace;
+            font-family: 'Courier New', monospace;
             word-break: break-all;
             margin-top: 4px;
+            color: #00ffff;
         }
         .disconnect-btn {
             margin-top: 8px;
             padding: 6px 12px;
-            background: rgba(255, 255, 255, 0.2);
-            color: white;
-            border: 1px solid rgba(255, 255, 255, 0.3);
+            background: rgba(255, 68, 68, 0.1);
+            color: #ff4444;
+            border: 1px solid rgba(255, 68, 68, 0.3);
             border-radius: 4px;
             cursor: pointer;
             font-size: 0.8em;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
         }
         .disconnect-btn:hover {
-            background: rgba(255, 255, 255, 0.3);
+            background: rgba(255, 68, 68, 0.15);
+            border-color: rgba(255, 68, 68, 0.5);
         }
     </style>
 </head>
@@ -784,13 +827,13 @@ app.get("/", (req, res) => {
         <div class="content">
             <div class="chat-section">
                 <h2>💬 Chat with NetWatch</h2>
-                <div style="margin-bottom: 15px; padding: 12px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #667eea;">
-                    <div style="font-size: 0.9em; color: #1976d2;">
+                <div style="margin-bottom: 15px; padding: 12px; background: rgba(0, 255, 255, 0.05); border-radius: 6px; border-left: 2px solid rgba(0, 255, 255, 0.3);">
+                    <div style="font-size: 0.9em; color: #00d4ff;">
                         <strong>💡 Quick Actions:</strong>
                         <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                            <button onclick="sendQuickMessage('Get security summary')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Get Security Summary</button>
-                            <button onclick="sendQuickMessage('Monitor wallet balance')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Check Balance</button>
-                            <button onclick="sendQuickMessage('Analyze address 0x...')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Analyze Address</button>
+                            <button onclick="sendQuickMessage('Get security summary')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Get Security Summary</button>
+                            <button onclick="sendQuickMessage('Monitor wallet balance')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Check Balance</button>
+                            <button onclick="sendQuickMessage('Analyze address 0x...')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Analyze Address</button>
                         </div>
                     </div>
                 </div>
@@ -805,9 +848,9 @@ app.get("/", (req, res) => {
                             <li>📊 Provide comprehensive security summaries</li>
                             <li>⚠️ Detect threats and security risks</li>
                         </ul>
-                        <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #ffc107;">
-                            <strong>💡 Try asking:</strong>
-                            <div style="margin-top: 5px; font-family: monospace; font-size: 0.9em;">
+                        <div style="margin-top: 15px; padding: 10px; background: rgba(0, 200, 255, 0.05); border-radius: 6px; border-left: 2px solid rgba(0, 200, 255, 0.3);">
+                            <strong style="color: #00d4ff;">💡 Try asking:</strong>
+                            <div style="margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.9em; color: #a0b8c8;">
                                 • "Analyze transaction 0x..."<br>
                                 • "Get security summary"<br>
                                 • "Monitor my wallet balance"<br>
@@ -820,7 +863,7 @@ app.get("/", (req, res) => {
                     <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses..." onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
                     <button onclick="sendMessage()" id="sendButton">Send</button>
                 </div>
-                <div style="margin-top: 10px; text-align: center; font-size: 0.85em; color: #666;">
+                <div style="margin-top: 10px; text-align: center; font-size: 0.85em; color: #8a98a8; font-family: 'Courier New', monospace;">
                     <span id="agentStatus">Agent Status: Checking...</span>
                 </div>
             </div>
@@ -829,7 +872,7 @@ app.get("/", (req, res) => {
                 <div id="analyticsContent">
                     <div class="loading">Loading analytics...</div>
                 </div>
-                <button onclick="refreshAnalytics()" style="width: 100%; padding: 10px; margin-top: 10px; background: #667eea; color: white; border: none; border-radius: 6px; cursor: pointer;">Refresh Analytics</button>
+                <button onclick="refreshAnalytics()" style="width: 100%; padding: 10px; margin-top: 10px; background: rgba(0, 255, 255, 0.1); color: #00ffff; border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Refresh Analytics</button>
             </div>
         </div>
     </div>
@@ -1007,14 +1050,18 @@ app.get("/", (req, res) => {
             
             if (connectedWallet) {
                 btn.textContent = '🔗 Wallet Connected';
-                btn.style.background = 'linear-gradient(135deg, #4caf50 0%, #45a049 100%)';
+                btn.style.background = 'rgba(0, 255, 136, 0.15)';
+                btn.style.borderColor = 'rgba(0, 255, 136, 0.4)';
+                btn.style.color = '#00ff88';
                 btn.style.cursor = 'default';
                 info.style.display = 'block';
                 typeSpan.textContent = \`\${connectedWallet.name} (\${connectedWallet.type})\`;
                 addressSpan.textContent = connectedWallet.address;
             } else {
                 btn.textContent = '🔗 Connect Wallet';
-                btn.style.background = 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)';
+                btn.style.background = 'rgba(0, 255, 255, 0.1)';
+                btn.style.borderColor = 'rgba(0, 255, 255, 0.3)';
+                btn.style.color = '#00ffff';
                 btn.style.cursor = 'pointer';
                 info.style.display = 'none';
             }
@@ -1049,7 +1096,10 @@ app.get("/", (req, res) => {
                 const response = await fetch('/health');
                 const data = await response.json();
                 document.getElementById('statusIndicator').className = 'status-indicator ' + (data.agentInitialized ? 'status-online' : 'status-offline');
-                document.getElementById('statusText').textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
+                const statusTextEl = document.getElementById('statusText');
+                statusTextEl.textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
+                statusTextEl.style.color = '#e0e8f0';
+                statusTextEl.style.background = 'transparent';
                 
                 // Update level checkboxes
                 if (data.currentLevel) {
@@ -1075,9 +1125,9 @@ app.get("/", (req, res) => {
                 const agentStatus = document.getElementById('agentStatus');
                 if (agentStatus) {
                     if (data.agentInitialized) {
-                        agentStatus.innerHTML = '<span style="color: #4caf50;">✓ Agent Online - Ready to chat</span>';
+                        agentStatus.innerHTML = '<span style="color: #00ff88;">✓ Agent Online - Ready to chat</span>';
                     } else {
-                        agentStatus.innerHTML = '<span style="color: #ff9800;">⚠ Agent Initializing... (Check API keys in .env)</span>';
+                        agentStatus.innerHTML = '<span style="color: #ffaa44;">⚠ Agent Initializing... (Check API keys in .env)</span>';
                     }
                 }
             } catch (error) {
@@ -1085,7 +1135,7 @@ app.get("/", (req, res) => {
                 document.getElementById('statusText').textContent = 'Connection Error';
                 const agentStatus = document.getElementById('agentStatus');
                 if (agentStatus) {
-                    agentStatus.innerHTML = '<span style="color: #f44336;">✗ Connection Error</span>';
+                    agentStatus.innerHTML = '<span style="color: #ff4444;">✗ Connection Error</span>';
                 }
             }
         }
@@ -1253,17 +1303,17 @@ app.get("/", (req, res) => {
         setInterval(refreshAnalytics, 30000);
     </script>
     
-    <footer style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; margin-top: 30px; border-top: 2px solid rgba(255,255,255,0.2);">
-        <div style="font-size: 0.95em; line-height: 1.8;">
+    <footer style="background: rgba(0, 255, 255, 0.05); border-top: 1px solid rgba(0, 255, 255, 0.15); color: #8a98a8; padding: 20px; text-align: center; margin-top: 30px;">
+        <div style="font-size: 0.95em; line-height: 1.8; font-family: 'Courier New', monospace;">
             <div style="margin-bottom: 8px;">
-                Built with <span style="color: #FFD700;">⚡</span> 
-                <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">AgentKit</a>
-                and <span style="color: #FFD700;">🔒</span>
-                <a href="https://verisense.network" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">VeriSense</a>
+                Built with <span style="color: #00ffff;">⚡</span> 
+                <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">AgentKit</a>
+                and <span style="color: #00ffff;">🔒</span>
+                <a href="https://github.com/yourusername/netwatch-agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">NetWatch</a>
             </div>
-            <div style="opacity: 0.9; font-size: 0.9em;">
-                Made with <span style="color: #ff6b9d;">❤️</span> by 
-                <a href="https://github.com/edwardtay" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); font-weight: 500; transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">Edward</a>
+            <div style="opacity: 0.85; font-size: 0.9em;">
+                Made with <span style="color: #00ff88;">❤️</span> by 
+                <a href="https://github.com/edwardtay" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); font-weight: 500; transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">Edward</a>
             </div>
         </div>
     </footer>
