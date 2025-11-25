@@ -3,6 +3,7 @@ import { HumanMessage } from "@langchain/core/messages";
 import { initializeAgent } from "./index";
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
+import { AnalystLevel, levelManager } from "./utils/level-manager";
 import * as dotenv from "dotenv";
 
 dotenv.config();
@@ -28,11 +29,18 @@ app.use((req, res, next) => {
 // Initialize agent (singleton)
 let agentInstance: Awaited<ReturnType<typeof initializeAgent>> | null = null;
 let agentInitialized = false;
+let currentLevel: AnalystLevel = levelManager.getCurrentLevel();
 
-async function getAgent() {
-  if (!agentInstance) {
-    agentInstance = await initializeAgent();
+async function getAgent(level?: AnalystLevel) {
+  // Reinitialize if level changed or not initialized
+  if (!agentInstance || (level && level !== currentLevel)) {
+    if (level) {
+      currentLevel = level;
+      levelManager.setLevel(level);
+    }
+    agentInstance = await initializeAgent(currentLevel);
     agentInitialized = true;
+    logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
   }
   return agentInstance;
 }
@@ -43,11 +51,85 @@ async function getAgent() {
  * Health check endpoint
  */
 app.get("/health", (req, res) => {
+  const capabilities = levelManager.getCapabilities();
   res.json({
     status: "ok",
     agentInitialized,
+    currentLevel: currentLevel,
+    capabilities: {
+      description: capabilities.description,
+      networkAccess: capabilities.networkAccess,
+      webSearch: capabilities.webSearch,
+      mcpTools: capabilities.mcpTools,
+      a2aCoordination: capabilities.a2aCoordination,
+      payments: capabilities.payments,
+    },
     timestamp: new Date().toISOString(),
   });
+});
+
+/**
+ * Get available levels
+ */
+app.get("/api/levels", (req, res) => {
+  res.json({
+    currentLevel: currentLevel,
+    availableLevels: Object.values(AnalystLevel).map((level) => ({
+      id: level,
+      name: level.replace("LEVEL_", "").replace("_", " ").toUpperCase(),
+      capabilities: levelManager.getCapabilities(),
+    })),
+    allCapabilities: Object.entries(AnalystLevel).map(([key, level]) => ({
+      level,
+      capabilities: (() => {
+        const tempManager = levelManager;
+        tempManager.setLevel(level);
+        return tempManager.getCapabilities();
+      })(),
+    })),
+  });
+});
+
+/**
+ * Switch level endpoint
+ */
+app.post("/api/level", async (req, res) => {
+  try {
+    const { level } = req.body;
+
+    if (!level || !Object.values(AnalystLevel).includes(level)) {
+      return res.status(400).json({
+        error: "Invalid level",
+        availableLevels: Object.values(AnalystLevel),
+      });
+    }
+
+    // Reinitialize agent with new level
+    agentInstance = null;
+    await getAgent(level as AnalystLevel);
+
+    const capabilities = levelManager.getCapabilities();
+
+    res.json({
+      success: true,
+      level: currentLevel,
+      capabilities: {
+        description: capabilities.description,
+        networkAccess: capabilities.networkAccess,
+        webSearch: capabilities.webSearch,
+        mcpTools: capabilities.mcpTools,
+        a2aCoordination: capabilities.a2aCoordination,
+        payments: capabilities.payments,
+      },
+      message: `Successfully switched to ${currentLevel}`,
+    });
+  } catch (error) {
+    logger.error("Error switching level", error);
+    res.status(500).json({
+      error: "Failed to switch level",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
 });
 
 /**
@@ -402,10 +484,23 @@ app.get("/", (req, res) => {
         <div class="header">
             <h1>🔒 VeriSense</h1>
             <p>Cybersecurity Agent for Blockchain Threat Detection</p>
-            <div style="margin-top: 15px;">
-                <span class="status-indicator" id="statusIndicator"></span>
-                <span id="statusText">Checking status...</span>
+            <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
+                <div>
+                    <span class="status-indicator" id="statusIndicator"></span>
+                    <span id="statusText">Checking status...</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 10px;">
+                    <label for="levelSelect" style="color: white; font-size: 0.9em;">Level:</label>
+                    <select id="levelSelect" onchange="switchLevel()" style="padding: 6px 12px; border-radius: 4px; border: none; font-size: 0.9em; cursor: pointer;">
+                        <option value="level_1_local">Level 1 - Local</option>
+                        <option value="level_2_intel">Level 2 - Intel</option>
+                        <option value="level_3_tools">Level 3 - Tools</option>
+                        <option value="level_4a_a2a">Level 4A - A2A</option>
+                        <option value="level_4b_x402">Level 4B - x402</option>
+                    </select>
+                </div>
             </div>
+            <div id="levelInfo" style="margin-top: 10px; font-size: 0.85em; opacity: 0.9;"></div>
         </div>
         <div class="content">
             <div class="chat-section">
@@ -470,6 +565,20 @@ app.get("/", (req, res) => {
                 document.getElementById('statusIndicator').className = 'status-indicator ' + (data.agentInitialized ? 'status-online' : 'status-offline');
                 document.getElementById('statusText').textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
                 
+                // Update level selector
+                if (data.currentLevel) {
+                    const levelSelect = document.getElementById('levelSelect');
+                    if (levelSelect) {
+                        levelSelect.value = data.currentLevel;
+                    }
+                    
+                    // Update level info
+                    const levelInfo = document.getElementById('levelInfo');
+                    if (levelInfo && data.capabilities) {
+                        levelInfo.innerHTML = \`<strong>\${data.currentLevel.replace('level_', '').replace('_', ' ').toUpperCase()}</strong>: \${data.capabilities.description}\`;
+                    }
+                }
+                
                 // Update chat section status
                 const agentStatus = document.getElementById('agentStatus');
                 if (agentStatus) {
@@ -486,6 +595,29 @@ app.get("/", (req, res) => {
                 if (agentStatus) {
                     agentStatus.innerHTML = '<span style="color: #f44336;">✗ Connection Error</span>';
                 }
+            }
+        }
+
+        async function switchLevel() {
+            const levelSelect = document.getElementById('levelSelect');
+            const level = levelSelect.value;
+            
+            try {
+                const response = await fetch('/api/level', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ level })
+                });
+                
+                const data = await response.json();
+                if (data.success) {
+                    addMessage('agent', \`Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
+                    checkStatus(); // Refresh status
+                } else {
+                    alert('Failed to switch level: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                alert('Error switching level: ' + error.message);
             }
         }
 
@@ -612,6 +744,21 @@ app.get("/", (req, res) => {
         setInterval(checkStatus, 5000);
         setInterval(refreshAnalytics, 30000);
     </script>
+    
+    <footer style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 20px; text-align: center; margin-top: 30px; border-top: 2px solid rgba(255,255,255,0.2);">
+        <div style="font-size: 0.95em; line-height: 1.8;">
+            <div style="margin-bottom: 8px;">
+                Built with <span style="color: #FFD700;">⚡</span> 
+                <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">AgentKit</a>
+                and <span style="color: #FFD700;">🔒</span>
+                <a href="https://github.com/yourusername/verisense-agentkit" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">VeriSense</a>
+            </div>
+            <div style="opacity: 0.9; font-size: 0.9em;">
+                Made with <span style="color: #ff6b9d;">❤️</span> by 
+                <a href="https://github.com/edwardtay" target="_blank" style="color: #FFD700; text-decoration: none; border-bottom: 1px dotted rgba(255,215,0,0.5); font-weight: 500; transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(255,215,0,1)'; this.style.textShadow='0 0 8px rgba(255,215,0,0.5)'" onmouseout="this.style.borderBottomColor='rgba(255,215,0,0.5)'; this.style.textShadow='none'">Edward</a>
+            </div>
+        </div>
+    </footer>
 </body>
 </html>
   `);
