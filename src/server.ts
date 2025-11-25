@@ -50,7 +50,7 @@ app.use((req, res, next) => {
 // Initialize agent (singleton)
 let agentInstance: any = null;
 let agentInitialized = false;
-let currentLevel: string = "level_1_local";
+let currentLevel: string = "level_2_intel";
 
 async function getAgent(level?: string) {
   // Try to load modules if not already loaded
@@ -876,7 +876,7 @@ app.get("/", (req, res) => {
     <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
     <script>
         let threadId = 'web-' + Date.now();
-        let currentSelectedLevel = 'level_1_local';
+        let currentSelectedLevel = 'level_2_intel';
         let connectedWallet = null;
         let walletProvider = null;
         
@@ -1139,7 +1139,7 @@ app.get("/", (req, res) => {
             }
         }
 
-        let currentSelectedLevel = 'level_1_local';
+        let currentSelectedLevel = 'level_2_intel';
         
         async function switchLevel() {
             const checkedRadio = document.querySelector('input[name="level"]:checked');
