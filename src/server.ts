@@ -63,6 +63,13 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
+    if (!agentInitialized) {
+      return res.status(503).json({
+        error: "Agent not initialized",
+        message: "Please check your .env file and ensure all required API keys are set",
+      });
+    }
+
     const { agent, config } = await getAgent();
     const configWithThread = {
       ...config,
@@ -174,6 +181,7 @@ app.get("/api/wallet", async (req, res) => {
 
 // Serve HTML interface
 app.get("/", (req, res) => {
+  res.setHeader("Content-Type", "text/html");
   res.send(`
 <!DOCTYPE html>
 <html lang="en">
@@ -217,7 +225,7 @@ app.get("/", (req, res) => {
         }
         .content {
             display: grid;
-            grid-template-columns: 1fr 1fr;
+            grid-template-columns: 2fr 1fr;
             gap: 20px;
             padding: 30px;
         }
@@ -226,7 +234,14 @@ app.get("/", (req, res) => {
                 grid-template-columns: 1fr;
             }
         }
-        .chat-section, .analytics-section {
+        .chat-section {
+            background: #f8f9fa;
+            border-radius: 8px;
+            padding: 20px;
+            border: 2px solid #667eea;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+        }
+        .analytics-section {
             background: #f8f9fa;
             border-radius: 8px;
             padding: 20px;
@@ -236,14 +251,35 @@ app.get("/", (req, res) => {
             margin-bottom: 20px;
             font-size: 1.5em;
         }
+        .chat-section h2 {
+            color: #667eea;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
         .chat-messages {
             background: white;
             border-radius: 8px;
             padding: 15px;
-            height: 400px;
+            height: 500px;
             overflow-y: auto;
             margin-bottom: 15px;
             border: 1px solid #e0e0e0;
+            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+        }
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        .chat-messages::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: #667eea;
+            border-radius: 4px;
+        }
+        .chat-messages::-webkit-scrollbar-thumb:hover {
+            background: #5568d3;
         }
         .message {
             margin-bottom: 15px;
@@ -266,31 +302,46 @@ app.get("/", (req, res) => {
         .chat-input {
             display: flex;
             gap: 10px;
+            align-items: center;
         }
         .chat-input input {
             flex: 1;
-            padding: 12px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
+            padding: 14px 16px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
             font-size: 1em;
+            transition: border-color 0.3s;
+        }
+        .chat-input input:focus {
+            outline: none;
+            border-color: #667eea;
+            box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         }
         .chat-input button {
-            padding: 12px 24px;
-            background: #667eea;
+            padding: 14px 28px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: white;
             border: none;
-            border-radius: 6px;
+            border-radius: 8px;
             cursor: pointer;
             font-size: 1em;
             font-weight: bold;
-            transition: background 0.3s;
+            transition: all 0.3s;
+            box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
         }
-        .chat-input button:hover {
-            background: #5568d3;
+        .chat-input button:hover:not(:disabled) {
+            background: linear-gradient(135deg, #5568d3 0%, #6a3d8f 100%);
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+        .chat-input button:active:not(:disabled) {
+            transform: translateY(0);
         }
         .chat-input button:disabled {
             background: #ccc;
             cursor: not-allowed;
+            transform: none;
+            box-shadow: none;
         }
         .analytics-card {
             background: white;
@@ -358,23 +409,45 @@ app.get("/", (req, res) => {
         </div>
         <div class="content">
             <div class="chat-section">
-                <h2>💬 Security Analysis</h2>
+                <h2>💬 Chat with VeriSense</h2>
+                <div style="margin-bottom: 15px; padding: 12px; background: #e3f2fd; border-radius: 6px; border-left: 4px solid #667eea;">
+                    <div style="font-size: 0.9em; color: #1976d2;">
+                        <strong>💡 Quick Actions:</strong>
+                        <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
+                            <button onclick="sendQuickMessage('Get security summary')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Get Security Summary</button>
+                            <button onclick="sendQuickMessage('Monitor wallet balance')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Check Balance</button>
+                            <button onclick="sendQuickMessage('Analyze address 0x...')" style="padding: 6px 12px; background: white; border: 1px solid #667eea; color: #667eea; border-radius: 4px; cursor: pointer; font-size: 0.85em;">Analyze Address</button>
+                        </div>
+                    </div>
+                </div>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message agent">
-                        <div class="message-label">VeriSense Agent</div>
+                        <div class="message-label">🔒 VeriSense Agent</div>
                         <div>Welcome! I'm VeriSense, your cybersecurity agent. I can help you:</div>
-                        <ul style="margin-top: 10px; margin-left: 20px;">
-                            <li>Analyze blockchain transactions</li>
-                            <li>Check address security</li>
-                            <li>Monitor wallet balance</li>
-                            <li>Provide security summaries</li>
+                        <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
+                            <li>🔍 Analyze blockchain transactions for suspicious patterns</li>
+                            <li>🛡️ Check address security and risk assessment</li>
+                            <li>💰 Monitor wallet balance and detect anomalies</li>
+                            <li>📊 Provide comprehensive security summaries</li>
+                            <li>⚠️ Detect threats and security risks</li>
                         </ul>
-                        <div style="margin-top: 10px;">Try asking: "Analyze transaction 0x..." or "Get security summary"</div>
+                        <div style="margin-top: 15px; padding: 10px; background: #fff3cd; border-radius: 6px; border-left: 4px solid #ffc107;">
+                            <strong>💡 Try asking:</strong>
+                            <div style="margin-top: 5px; font-family: monospace; font-size: 0.9em;">
+                                • "Analyze transaction 0x..."<br>
+                                • "Get security summary"<br>
+                                • "Monitor my wallet balance"<br>
+                                • "Check address 0x... for security risks"
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="chat-input">
-                    <input type="text" id="messageInput" placeholder="Ask about security analysis..." onkeypress="if(event.key==='Enter') sendMessage()">
+                    <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses..." onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
                     <button onclick="sendMessage()" id="sendButton">Send</button>
+                </div>
+                <div style="margin-top: 10px; text-align: center; font-size: 0.85em; color: #666;">
+                    <span id="agentStatus">Agent Status: Checking...</span>
                 </div>
             </div>
             <div class="analytics-section">
@@ -396,10 +469,29 @@ app.get("/", (req, res) => {
                 const data = await response.json();
                 document.getElementById('statusIndicator').className = 'status-indicator ' + (data.agentInitialized ? 'status-online' : 'status-offline');
                 document.getElementById('statusText').textContent = data.agentInitialized ? 'Agent Online' : 'Agent Initializing...';
+                
+                // Update chat section status
+                const agentStatus = document.getElementById('agentStatus');
+                if (agentStatus) {
+                    if (data.agentInitialized) {
+                        agentStatus.innerHTML = '<span style="color: #4caf50;">✓ Agent Online - Ready to chat</span>';
+                    } else {
+                        agentStatus.innerHTML = '<span style="color: #ff9800;">⚠ Agent Initializing... (Check API keys in .env)</span>';
+                    }
+                }
             } catch (error) {
                 document.getElementById('statusIndicator').className = 'status-indicator status-offline';
                 document.getElementById('statusText').textContent = 'Connection Error';
+                const agentStatus = document.getElementById('agentStatus');
+                if (agentStatus) {
+                    agentStatus.innerHTML = '<span style="color: #f44336;">✗ Connection Error</span>';
+                }
             }
+        }
+
+        function sendQuickMessage(message) {
+            document.getElementById('messageInput').value = message;
+            sendMessage();
         }
 
         async function sendMessage() {
@@ -527,25 +619,26 @@ app.get("/", (req, res) => {
 
 // Start server
 async function startServer() {
+  // Start server even if agent initialization fails
+  app.listen(PORT, () => {
+    logger.info(`🚀 VeriSense Server running on http://localhost:${PORT}`);
+    logger.info(`📊 Web Interface: http://localhost:${PORT}`);
+    logger.info(`🔌 API Endpoints:`);
+    logger.info(`   POST /api/chat - Chat with agent`);
+    logger.info(`   GET  /api/analytics - Get security analytics`);
+    logger.info(`   GET  /api/events - Get security events`);
+    logger.info(`   GET  /api/wallet - Get wallet info`);
+    logger.info(`   GET  /health - Health check`);
+  });
+
+  // Try to initialize agent in background (non-blocking)
   try {
-    // Pre-initialize agent
     logger.info("Pre-initializing agent...");
     await getAgent();
     logger.info("Agent initialized successfully");
-
-    app.listen(PORT, () => {
-      logger.info(`🚀 VeriSense Server running on http://localhost:${PORT}`);
-      logger.info(`📊 Web Interface: http://localhost:${PORT}`);
-      logger.info(`🔌 API Endpoints:`);
-      logger.info(`   POST /api/chat - Chat with agent`);
-      logger.info(`   GET  /api/analytics - Get security analytics`);
-      logger.info(`   GET  /api/events - Get security events`);
-      logger.info(`   GET  /api/wallet - Get wallet info`);
-      logger.info(`   GET  /health - Health check`);
-    });
   } catch (error) {
-    logger.error("Failed to start server", error);
-    process.exit(1);
+    logger.warn("Agent initialization failed (server will continue without agent):", error);
+    logger.warn("Please check your .env file and ensure all required API keys are set");
   }
 }
 
