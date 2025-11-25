@@ -756,30 +756,26 @@ app.get("/", (req, res) => {
             <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
                 <div>
                     <span class="status-indicator" id="statusIndicator"></span>
-                    <span id="statusText">Checking status...</span>
+                    <span id="statusText" style="color: #e0e8f0; background: transparent;">Checking status...</span>
                 </div>
                 <div style="display: flex; flex-direction: column; align-items: center; gap: 8px;">
-                    <label style="color: white; font-size: 0.9em; font-weight: 500;">Level:</label>
+                    <label style="color: #e0e8f0; font-size: 0.9em; font-weight: 500;">Level:</label>
                     <div class="level-checkboxes">
                         <div class="level-checkbox-wrapper">
-                            <input type="radio" id="level_1_local" name="level" value="level_1_local" onchange="switchLevel()">
-                            <label for="level_1_local">Level 1 - Local</label>
-                        </div>
-                        <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_2_intel" name="level" value="level_2_intel" onchange="switchLevel()">
-                            <label for="level_2_intel">Level 2 - Intel</label>
+                            <label for="level_2_intel">search</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_3_tools" name="level" value="level_3_tools" onchange="switchLevel()">
-                            <label for="level_3_tools">Level 3 - Tools</label>
+                            <label for="level_3_tools">MCP</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="switchLevel()">
-                            <label for="level_4a_a2a">Level 4A - A2A</label>
+                            <label for="level_4a_a2a">A2A</label>
                         </div>
                         <div class="level-checkbox-wrapper">
                             <input type="radio" id="level_4b_x402" name="level" value="level_4b_x402" onchange="switchLevel()">
-                            <label for="level_4b_x402">Level 4B - x402</label>
+                            <label for="level_4b_x402">x402</label>
                         </div>
                     </div>
                 </div>
@@ -1132,7 +1128,10 @@ app.get("/", (req, res) => {
                 }
             } catch (error) {
                 document.getElementById('statusIndicator').className = 'status-indicator status-offline';
-                document.getElementById('statusText').textContent = 'Connection Error';
+                const statusTextEl = document.getElementById('statusText');
+                statusTextEl.textContent = 'Connection Error';
+                statusTextEl.style.color = '#e0e8f0';
+                statusTextEl.style.background = 'transparent';
                 const agentStatus = document.getElementById('agentStatus');
                 if (agentStatus) {
                     agentStatus.innerHTML = '<span style="color: #ff4444;">✗ Connection Error</span>';
