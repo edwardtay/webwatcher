@@ -6,8 +6,9 @@
   "author": "NetWatch Team",
   "license": "Apache-2.0",
   "scripts": {
-    "start": "NODE_OPTIONS='--no-warnings' tsx ./src/index.ts",
+    "start": "NODE_OPTIONS='--no-warnings' node dist/server.js",
     "start:prod": "NODE_OPTIONS='--no-warnings' node dist/server.js",
+    "start:cli": "NODE_OPTIONS='--no-warnings' tsx ./src/index.ts",
     "server": "NODE_OPTIONS='--no-warnings --experimental-specifier-resolution=node' tsx ./src/server.ts",
     "dev": "nodemon --exec tsx ./src/index.ts",
     "dev:server": "nodemon --exec tsx ./src/server.ts",

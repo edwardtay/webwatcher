@@ -4,6 +4,24 @@ import { securityAnalytics } from "./utils/security-analytics";
 import { validateInput } from "./utils/input-validator";
 import { exaSearch } from "./utils/mcp-client.js";
 import * as dotenv from "dotenv";
+import http from "http";
+
+const port = process.env.PORT ? Number(process.env.PORT) : 8080;
+
+const server = http.createServer((req, res) => {
+  if (req.url === "/healthz") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    res.end("ok");
+    return;
+  }
+
+  res.writeHead(200, { "Content-Type": "text/plain" });
+  res.end("Verisense AgentKit is running\n");
+});
+
+server.listen(port, "0.0.0.0", () => {
+  console.log(`Server listening on port ${port}`);
+});
 
 // Helper function to extract title from URL
 function extractTitleFromUrl(url: string): string {
