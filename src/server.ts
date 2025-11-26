@@ -10,9 +10,7 @@ app.get("/healthz", (_req, res) => {
 });
 
 app.get("/", (_req, res) => {
-  res
-    .status(200)
-    .send("WebWatcher / VeriSense agent server is running");
+  res.status(200).send("WebWatcher / VeriSense agent server is running");
 });
 
 type UrlFeatures = {
@@ -162,7 +160,6 @@ function phishingRedFlagAgent(features: UrlFeatures) {
   };
 }
 
-// A2A style endpoint: User -> UrlFeatureAgent -> PhishingRedFlagAgent
 app.post("/check", (req, res) => {
   const { url } = req.body || {};
   if (!url || typeof url !== "string") {
@@ -233,7 +230,6 @@ const agentCard = {
 app.get("/.well-known/agent.json", (_req, res) => {
   res.json(agentCard);
 });
-
 
 app.listen(port, "0.0.0.0", () => {
   console.log(`[INFO] http server listening on port ${port}`);

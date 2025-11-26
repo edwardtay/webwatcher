@@ -1,23 +1,24 @@
 {
   "name": "verisense-agentkit",
   "version": "1.0.0",
-  "description": "Cybersecurity agent for blockchain threat detection and monitoring using Coinbase AgentKit",
+  "description": "Cybersecurity agent for Web2 and Web3",
   "private": true,
   "author": "NetWatch Team",
   "license": "Apache-2.0",
-  "scripts": {
-    "start": "NODE_OPTIONS='--no-warnings' node dist/server.js",
-    "start:prod": "NODE_OPTIONS='--no-warnings' node dist/server.js",
-    "start:cli": "NODE_OPTIONS='--no-warnings' tsx ./src/index.ts",
-    "server": "NODE_OPTIONS='--no-warnings --experimental-specifier-resolution=node' tsx ./src/server.ts",
-    "dev": "nodemon --exec tsx ./src/index.ts",
-    "dev:server": "nodemon --exec tsx ./src/server.ts",
-    "build": "tsc",
-    "lint": "eslint -c .eslintrc.json src/**/*.ts",
-    "lint:fix": "eslint -c .eslintrc.json src/**/*.ts --fix",
-    "format": "prettier --write \"**/*.{ts,js,cjs,json,md}\"",
-    "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\""
-  },
+"scripts": {
+  "start": "NODE_OPTIONS='--no-warnings' node dist/server.js",
+  "start:prod": "NODE_OPTIONS='--no-warnings' node dist/server.js",
+  "start:cli": "NODE_OPTIONS='--no-warnings' tsx ./src/index.ts",
+  "server": "NODE_OPTIONS='--no-warnings --experimental-specifier-resolution=node' tsx ./src/server.ts",
+  "dev": "nodemon --exec tsx ./src/index.ts",
+  "dev:server": "nodemon --exec tsx ./src/server.ts",
+  "build": "tsc",
+  "lint": "eslint -c .eslintrc.json src/**/*.ts",
+  "lint:fix": "eslint -c .eslintrc.json src/**/*.ts --fix",
+  "format": "prettier --write \"**/*.{ts,js,cjs,json,md}\"",
+  "format:check": "prettier -c .prettierrc --check \"**/*.{ts,js,cjs,json,md}\""
+},
+
   "dependencies": {
     "@coinbase/agentkit": "^0.1.2",
     "@coinbase/agentkit-langchain": "latest",
