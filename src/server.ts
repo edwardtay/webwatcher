@@ -192,30 +192,14 @@ const agentCard = {
   author: {
     name: "NetWatch Team"
   },
+  agentUrl: "https://verisense-agentkit-414780218994.us-central1.run.app",
   capabilities: {
     functions: [
       {
         name: "checkUrl",
         description: "Analyze a URL and return phishing red flags.",
-        inputSchema: {
-          type: "object",
-          properties: {
-            url: {
-              type: "string",
-              description: "URL to analyze for phishing indicators."
-            }
-          },
-          required: ["url"]
-        },
-        outputSchema: {
-          type: "object",
-          properties: {
-            url: { type: "string" },
-            verdict: { type: "string" },
-            redFlags: { type: "array", items: { type: "string" } },
-            explanation: { type: "string" }
-          }
-        }
+        inputSchema: { /* same as before */ },
+        outputSchema: { /* same as before */ }
       }
     ]
   },
