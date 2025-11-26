@@ -12,6 +12,8 @@ import {
 import { z } from "zod";
 import { logger } from "../utils/logger";
 import { securityAnalytics } from "../utils/security-analytics";
+import { cveRateLimiter, searchRateLimiter } from "../utils/rate-limiter";
+import { validateInput, validateCVEId } from "../utils/input-validator";
 
 export class Level2IntelActionProvider extends ActionProvider<WalletProvider> {
   constructor() {
@@ -40,59 +42,131 @@ export class Level2IntelActionProvider extends ActionProvider<WalletProvider> {
     args: { cveId?: string; keyword?: string; product?: string },
   ): Promise<string> {
     try {
+      // Input validation and guardrails
+      if (args.cveId && !validateCVEId(args.cveId)) {
+        return `❌ Invalid CVE ID format: ${args.cveId}. Expected format: CVE-YYYY-NNNN`;
+      }
+      
+      const keywordValidation = args.keyword ? validateInput(args.keyword) : { valid: true, sanitized: "" };
+      if (!keywordValidation.valid) {
+        return `❌ Invalid input: ${keywordValidation.error}`;
+      }
+      
+      // Rate limiting - prevent API abuse
+      const rateLimitKey = "cve_search";
+      if (!cveRateLimiter.isAllowed(rateLimitKey)) {
+        const remaining = cveRateLimiter.getRemaining(rateLimitKey);
+        return `⏳ Rate limit exceeded. Please wait before making another CVE search request. (${remaining} requests remaining)`;
+      }
+      
       logger.info("Searching CVE database", args);
 
       // Use NVD API (National Vulnerability Database) - free public API
       let url = "https://services.nvd.nist.gov/rest/json/cves/2.0";
       const params: string[] = [];
 
+      // Handle year-based searches (e.g., "2025", "CVE 2025")
+      const keyword = args.keyword || "";
+      const yearMatch = keyword.match(/\b(20\d{2})\b/);
+      const year = yearMatch ? yearMatch[1] : null;
+
       if (args.cveId) {
         url = `https://services.nvd.nist.gov/rest/json/cves/2.0?cveId=${encodeURIComponent(args.cveId)}`;
       } else {
-        if (args.keyword) {
-          params.push(`keywordSearch=${encodeURIComponent(args.keyword)}`);
+        // Build search parameters
+        if (year) {
+          // Search by year using pubStartDate and pubEndDate
+          const startDate = `${year}-01-01T00:00:00.000`;
+          const endDate = `${year}-12-31T23:59:59.999`;
+          params.push(`pubStartDate=${startDate}`);
+          params.push(`pubEndDate=${endDate}`);
         }
+        
+        // Add keyword search (excluding year if already used)
+        const searchKeyword = year ? keyword.replace(/\b20\d{2}\b/g, "").trim() : keyword;
+        if (searchKeyword) {
+          params.push(`keywordSearch=${encodeURIComponent(searchKeyword)}`);
+        }
+        
         if (args.product) {
           params.push(`keywordSearch=${encodeURIComponent(args.product)}`);
         }
+        
+        // Add results per page and start index for pagination
+        params.push("resultsPerPage=50"); // Increased from 20 to 50 for more results
+        params.push("startIndex=0");
+        
         if (params.length > 0) {
           url += `?${params.join("&")}`;
         }
       }
 
+      logger.info(`CVE API URL: ${url}`);
+
       const response = await fetch(url, {
         headers: {
           "Accept": "application/json",
+          "User-Agent": "WebWatcher-Security-Agent/1.0",
         },
       });
 
       if (!response.ok) {
-        throw new Error(`CVE API returned status ${response.status}`);
+        const errorText = await response.text();
+        logger.error(`CVE API error: ${response.status} - ${errorText}`);
+        throw new Error(`CVE API returned status ${response.status}: ${errorText.substring(0, 200)}`);
       }
 
-      const data = await response.json();
+      const data = await response.json() as { vulnerabilities?: any[]; totalResults?: number };
       const vulnerabilities = data.vulnerabilities || [];
+      const totalResults = data.totalResults || 0;
+
+      logger.info(`Found ${vulnerabilities.length} CVEs (total: ${totalResults})`);
+
+      const results = vulnerabilities.slice(0, 50).map((vuln: any) => { // Increased from 10 to 50
+        const cve = vuln.cve;
+        const cvssV31 = cve.metrics?.cvssMetricV31?.[0]?.cvssData;
+        const cvssV30 = cve.metrics?.cvssMetricV30?.[0]?.cvssData;
+        const cvssV2 = cve.metrics?.cvssMetricV2?.[0]?.cvssData;
+        
+        // Use best available CVSS score
+        const cvssData = cvssV31 || cvssV30 || cvssV2;
+        
+        return {
+          id: cve.id,
+          description: cve.descriptions?.find((d: any) => d.lang === "en")?.value || 
+                       cve.descriptions?.[0]?.value || 
+                       "No description available",
+          severity: cvssData?.baseSeverity || 
+                   (cvssData?.baseScore >= 9 ? "CRITICAL" : 
+                    cvssData?.baseScore >= 7 ? "HIGH" : 
+                    cvssData?.baseScore >= 4 ? "MEDIUM" : "LOW") || 
+                   "UNKNOWN",
+          score: cvssData?.baseScore || 0,
+          vector: cvssData?.vectorString || "N/A",
+          published: cve.published || "Unknown",
+          modified: cve.lastModified || "Unknown",
+          references: (cve.references || []).slice(0, 5).map((ref: any) => ref.url),
+        };
+      });
 
       const analysis = {
         timestamp: new Date().toISOString(),
         query: args,
-        results: vulnerabilities.slice(0, 10).map((vuln: any) => {
-          const cve = vuln.cve;
-          return {
-            id: cve.id,
-            description: cve.descriptions?.[0]?.value || "No description",
-            severity: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseSeverity || "UNKNOWN",
-            score: cve.metrics?.cvssMetricV31?.[0]?.cvssData?.baseScore || 0,
-            published: cve.published,
-            modified: cve.lastModified,
-          };
-        }),
-        totalFound: vulnerabilities.length,
+        searchYear: year,
+        results: results,
+        totalFound: totalResults,
+        showing: results.length,
+        summary: {
+          critical: results.filter((r: any) => r.severity === "CRITICAL").length,
+          high: results.filter((r: any) => r.severity === "HIGH").length,
+          medium: results.filter((r: any) => r.severity === "MEDIUM").length,
+          low: results.filter((r: any) => r.severity === "LOW").length,
+        },
       };
 
       // Calculate risk score based on found CVEs
-      const criticalCount = analysis.results.filter((r: any) => r.severity === "CRITICAL").length;
-      const highCount = analysis.results.filter((r: any) => r.severity === "HIGH").length;
+      const criticalCount = analysis.summary.critical;
+      const highCount = analysis.summary.high;
       const riskScore = criticalCount * 30 + highCount * 15;
 
       // Record event
@@ -109,10 +183,44 @@ export class Level2IntelActionProvider extends ActionProvider<WalletProvider> {
         riskScore,
       });
 
-      return JSON.stringify(analysis, null, 2);
+      // Format response for better readability
+      let responseText = `🔍 CVE Search Results\n\n`;
+      responseText += `Query: ${args.keyword || args.product || args.cveId || "General search"}\n`;
+      if (year) responseText += `Year Filter: ${year}\n`;
+      responseText += `Total Found: ${analysis.totalFound}\n`;
+      responseText += `Showing: ${analysis.showing} CVEs\n\n`;
+      responseText += `Summary:\n`;
+      responseText += `  Critical: ${analysis.summary.critical}\n`;
+      responseText += `  High: ${analysis.summary.high}\n`;
+      responseText += `  Medium: ${analysis.summary.medium}\n`;
+      responseText += `  Low: ${analysis.summary.low}\n\n`;
+      responseText += `Top CVEs:\n`;
+      
+      results.forEach((cve: any, idx: number) => {
+        responseText += `\n${idx + 1}. ${cve.id} [${cve.severity}] (Score: ${cve.score})\n`;
+        responseText += `   ${cve.description.substring(0, 200)}${cve.description.length > 200 ? "..." : ""}\n`;
+        responseText += `   Published: ${cve.published}\n`;
+        if (cve.references && cve.references.length > 0) {
+          responseText += `   References: ${cve.references[0]}\n`;
+        }
+      });
+
+      if (analysis.totalFound > results.length) {
+        responseText += `\n\n... and ${analysis.totalFound - results.length} more CVEs. Use more specific search terms to narrow results.`;
+      }
+
+      return responseText;
     } catch (error) {
       logger.error("Error searching CVE", error);
-      return `Error searching CVE: ${error instanceof Error ? error.message : String(error)}`;
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      
+      // Provide helpful error message
+      return `❌ Error searching CVE database: ${errorMsg}\n\n` +
+             `Please try:\n` +
+             `- A specific CVE ID (e.g., "CVE-2024-1234")\n` +
+             `- A product name (e.g., "Apache", "nginx")\n` +
+             `- A keyword related to the vulnerability\n` +
+             `- A year (e.g., "2025", "2024")`;
     }
   }
 
@@ -301,55 +409,279 @@ export class Level2IntelActionProvider extends ActionProvider<WalletProvider> {
     schema: z.object({
       query: z.string().describe("Search query for OSINT gathering"),
       searchType: z.enum(["general", "news", "social", "technical"]).optional().describe("Type of search"),
+      maxResults: z.number().optional().default(20).describe("Maximum number of results to return (default: 20, max: 100)"),
     }),
   })
   async osintSearch(
     walletProvider: WalletProvider,
-    args: { query: string; searchType?: string },
+    args: { query: string; searchType?: string; maxResults?: number },
   ): Promise<string> {
     try {
-      logger.info("Performing OSINT search", args);
+      // Input validation
+      const inputValidation = validateInput(args.query);
+      if (!inputValidation.valid) {
+        return `❌ Invalid search query: ${inputValidation.error}`;
+      }
+      
+      // Rate limiting
+      const rateLimitKey = "osint_search";
+      if (!searchRateLimiter.isAllowed(rateLimitKey)) {
+        const remaining = searchRateLimiter.getRemaining(rateLimitKey);
+        return `⏳ Rate limit exceeded. Please wait before making another search request. (${remaining} requests remaining)`;
+      }
+      
+      // Validate maxResults
+      const maxResults = Math.min(Math.max(1, args.maxResults || 20), 100); // Clamp between 1-100
+      
+      logger.info("Performing OSINT search", { ...args, maxResults });
 
-      // In production, integrate with:
-      // - Google Custom Search API
-      // - Bing Search API
-      // - DuckDuckGo API
-      // - Shodan API for technical searches
-      // - Twitter API for social searches
-      // - News APIs for news searches
+      // maxResults already validated above
+      const searchType = args.searchType || "general";
 
-      // For now, return a structured response indicating what would be searched
+      // Use DuckDuckGo Instant Answer API (free, no API key required)
+      // For more advanced searches, can use SerpAPI (requires SERP_API_KEY)
+      let searchUrl: string;
+      let results: any[] = [];
+
+      if (process.env.SERP_API_KEY) {
+        // Use SerpAPI for better results (requires API key)
+        const serpApiUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(args.query)}&api_key=${process.env.SERP_API_KEY}`;
+        
+        try {
+          const response = await fetch(serpApiUrl);
+          if (response.ok) {
+            const data = await response.json() as { organic_results?: any[] };
+            results = (data.organic_results || []).slice(0, maxResults).map((result: any) => ({
+              title: result.title,
+              url: result.link,
+              snippet: result.snippet,
+              source: "SerpAPI",
+            }));
+          }
+        } catch (error) {
+          logger.warn("SerpAPI search failed, falling back to DuckDuckGo", error);
+        }
+      }
+
+      // Fallback to DuckDuckGo HTML scraping (free, no API key)
+      if (results.length === 0) {
+        const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(args.query)}`;
+        
+        try {
+          const response = await fetch(ddgUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          });
+
+          if (response.ok) {
+            const html = await response.text();
+            // Simple HTML parsing for DuckDuckGo results
+            // In production, use a proper HTML parser like cheerio
+            const linkRegex = /<a class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+            const snippetRegex = /<a class="result__snippet"[^>]*>([^<]+)<\/a>/g;
+            
+            const links: Array<{ url: string; title: string }> = [];
+            let match;
+            while ((match = linkRegex.exec(html)) !== null && links.length < maxResults) {
+              links.push({ url: match[1], title: match[2] });
+            }
+
+            const snippets: string[] = [];
+            while ((match = snippetRegex.exec(html)) !== null && snippets.length < maxResults) {
+              snippets.push(match[1]);
+            }
+
+            results = links.slice(0, maxResults).map((link, idx) => ({
+              title: link.title,
+              url: link.url,
+              snippet: snippets[idx] || "No snippet available",
+              source: "DuckDuckGo",
+            }));
+          }
+        } catch (error) {
+          logger.warn("DuckDuckGo search failed", error);
+        }
+      }
+
+      // If still no results, try a simple web search API
+      if (results.length === 0 && process.env.SEARCH_API_KEY) {
+        // Generic search API fallback
+        try {
+          const searchApiUrl = `https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(args.query)}&count=${maxResults}`;
+          const response = await fetch(searchApiUrl, {
+            headers: {
+              "X-Subscription-Token": process.env.SEARCH_API_KEY,
+            },
+          });
+
+          if (response.ok) {
+            const data = await response.json() as { web?: { results?: any[] } };
+            results = (data.web?.results || []).map((result: any) => ({
+              title: result.title,
+              url: result.url,
+              snippet: result.description,
+              source: "Brave Search API",
+            }));
+          }
+        } catch (error) {
+          logger.warn("Search API failed", error);
+        }
+      }
+
       const analysis = {
         query: args.query,
-        searchType: args.searchType || "general",
+        searchType,
         timestamp: new Date().toISOString(),
-        note: "OSINT search integration requires API keys. This is a placeholder response.",
-        sources: [] as string[],
-        findings: [] as string[],
+        resultsFound: results.length,
+        results: results,
+        sources: searchType === "technical" 
+          ? ["Security advisories", "Vulnerability databases", "Technical documentation"]
+          : searchType === "news"
+          ? ["News articles", "Security blogs", "Press releases"]
+          : searchType === "social"
+          ? ["Social media", "Public profiles", "Forums"]
+          : ["General web search", "Public databases", "Security forums"],
       };
 
-      // Mock response structure
-      if (args.searchType === "technical") {
-        analysis.sources.push("Shodan", "Censys", "Security advisories");
-        analysis.findings.push("Technical OSINT would search vulnerability databases, exposed services, etc.");
-      } else if (args.searchType === "social") {
-        analysis.sources.push("Twitter", "LinkedIn", "Public profiles");
-        analysis.findings.push("Social OSINT would search social media platforms for mentions, profiles, etc.");
-      } else if (args.searchType === "news") {
-        analysis.sources.push("News APIs", "Security blogs", "Press releases");
-        analysis.findings.push("News OSINT would search recent news articles and security advisories.");
-      } else {
-        analysis.sources.push("General web search", "Public databases", "Security forums");
-        analysis.findings.push("General OSINT would search across multiple public sources.");
-      }
+      // Calculate risk score based on findings
+      let riskScore = 0;
+      const findings: string[] = [];
+
+      // Analyze results for security-relevant information
+      results.forEach((result) => {
+        const text = `${result.title} ${result.snippet}`.toLowerCase();
+        if (text.includes("vulnerability") || text.includes("exploit") || text.includes("cve")) {
+          riskScore += 10;
+          findings.push(`Security-related content found: ${result.title}`);
+        }
+        if (text.includes("breach") || text.includes("attack") || text.includes("malware")) {
+          riskScore += 15;
+          findings.push(`Threat-related content found: ${result.title}`);
+        }
+      });
+
+      // Record event
+      securityAnalytics.recordEvent({
+        type: "alert",
+        severity: riskScore >= 30 ? "high" : riskScore >= 15 ? "medium" : "low",
+        timestamp: new Date().toISOString(),
+        data: {
+          query: args.query,
+          searchType,
+          resultsFound: results.length,
+          findingsCount: findings.length,
+          riskScore,
+        },
+        riskScore,
+      });
 
       return JSON.stringify({
         ...analysis,
-        recommendation: "In production, integrate with real OSINT APIs for comprehensive intelligence gathering.",
+        findings: findings.length > 0 ? findings : ["No immediate security concerns identified"],
+        riskScore,
+        recommendation: riskScore >= 30
+          ? "High-risk findings detected. Review results carefully."
+          : riskScore >= 15
+          ? "Some security-relevant information found. Review recommended."
+          : "Search completed successfully.",
       }, null, 2);
     } catch (error) {
       logger.error("Error performing OSINT search", error);
       return `Error performing OSINT search: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * General web search
+   */
+  @CreateAction({
+    name: "web_search",
+    description:
+      "Performs a general web search for information. Requires network access.",
+    schema: z.object({
+      query: z.string().describe("Search query"),
+      maxResults: z.number().optional().default(20).describe("Maximum number of results to return (default: 20, max: 100)"),
+    }),
+  })
+  async webSearch(
+    walletProvider: WalletProvider,
+    args: { query: string; maxResults?: number },
+  ): Promise<string> {
+    try {
+      logger.info("Performing web search", args);
+
+      // Use the same search logic as OSINT search
+      const maxResults = Math.min(Math.max(1, args.maxResults || 20), 100); // Clamp between 1-100
+      let results: any[] = [];
+
+      if (process.env.SERP_API_KEY) {
+        const serpApiUrl = `https://serpapi.com/search.json?engine=google&q=${encodeURIComponent(args.query)}&api_key=${process.env.SERP_API_KEY}`;
+        
+        try {
+          const response = await fetch(serpApiUrl);
+          if (response.ok) {
+            const data = await response.json() as { organic_results?: any[] };
+            results = (data.organic_results || []).slice(0, maxResults).map((result: any) => ({
+              title: result.title,
+              url: result.link,
+              snippet: result.snippet,
+              source: "SerpAPI",
+            }));
+          }
+        } catch (error) {
+          logger.warn("SerpAPI search failed, falling back to DuckDuckGo", error);
+        }
+      }
+
+      // Fallback to DuckDuckGo
+      if (results.length === 0) {
+        const ddgUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(args.query)}`;
+        
+        try {
+          const response = await fetch(ddgUrl, {
+            headers: {
+              "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36",
+            },
+          });
+
+          if (response.ok) {
+            const html = await response.text();
+            const linkRegex = /<a class="result__a"[^>]*href="([^"]+)"[^>]*>([^<]+)<\/a>/g;
+            const snippetRegex = /<a class="result__snippet"[^>]*>([^<]+)<\/a>/g;
+            
+            const links: Array<{ url: string; title: string }> = [];
+            let match;
+            while ((match = linkRegex.exec(html)) !== null && links.length < maxResults) {
+              links.push({ url: match[1], title: match[2] });
+            }
+
+            const snippets: string[] = [];
+            while ((match = snippetRegex.exec(html)) !== null && snippets.length < maxResults) {
+              snippets.push(match[1]);
+            }
+
+            results = links.slice(0, maxResults).map((link, idx) => ({
+              title: link.title,
+              url: link.url,
+              snippet: snippets[idx] || "No snippet available",
+              source: "DuckDuckGo",
+            }));
+          }
+        } catch (error) {
+          logger.warn("DuckDuckGo search failed", error);
+        }
+      }
+
+      return JSON.stringify({
+        query: args.query,
+        timestamp: new Date().toISOString(),
+        resultsFound: results.length,
+        results,
+      }, null, 2);
+    } catch (error) {
+      logger.error("Error performing web search", error);
+      return `Error performing web search: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
 
@@ -373,37 +705,43 @@ export class Level2IntelActionProvider extends ActionProvider<WalletProvider> {
     try {
       logger.info("Searching vendor documentation", args);
 
-      // In production, integrate with vendor-specific APIs:
-      // - Microsoft Security Response Center (MSRC)
-      // - GitHub Security Advisories
-      // - NVD (already covered in CVE search)
-      // - Vendor-specific security pages
+      // Build search query
+      const searchQuery = `${args.vendor} ${args.product || ""} ${args.keyword || ""} security advisory`.trim();
+      
+      // Use web search to find vendor advisories
+      const searchResults = await this.webSearch(walletProvider, { 
+        query: searchQuery, 
+        maxResults: 10 
+      });
+
+      const parsedResults = JSON.parse(searchResults);
+      
+      // Filter for vendor-specific security pages
+      const vendorResults = parsedResults.results.filter((result: any) => {
+        const text = `${result.title} ${result.url}`.toLowerCase();
+        return text.includes(args.vendor.toLowerCase()) && 
+               (text.includes("security") || text.includes("advisory") || text.includes("cve"));
+      });
 
       const analysis = {
         vendor: args.vendor,
         product: args.product,
         keyword: args.keyword,
         timestamp: new Date().toISOString(),
-        note: "Vendor documentation search requires vendor-specific API integration.",
-        advisories: [] as Array<{
-          title: string;
-          date: string;
-          severity: string;
-          url?: string;
-        }>,
+        advisories: vendorResults.map((result: any) => ({
+          title: result.title,
+          url: result.url,
+          snippet: result.snippet,
+          source: result.source,
+        })),
+        totalFound: vendorResults.length,
       };
-
-      // Mock response - in production, fetch from real APIs
-      analysis.advisories.push({
-        title: `Security advisories for ${args.vendor}${args.product ? ` ${args.product}` : ""}`,
-        date: new Date().toISOString(),
-        severity: "unknown",
-        url: `https://example.com/vendor/${args.vendor.toLowerCase()}/advisories`,
-      });
 
       return JSON.stringify({
         ...analysis,
-        recommendation: "In production, integrate with vendor-specific security advisory APIs for real-time updates.",
+        recommendation: vendorResults.length > 0
+          ? "Found vendor security advisories. Review the URLs for detailed information."
+          : "No vendor-specific advisories found. Try searching with different keywords.",
       }, null, 2);
     } catch (error) {
       logger.error("Error searching vendor docs", error);

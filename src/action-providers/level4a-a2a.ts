@@ -140,7 +140,10 @@ export class Level4AA2AActionProvider extends ActionProvider<WalletProvider> {
 
       // Register discovered agents
       filtered.forEach((agent) => {
-        this.agentRegistry.set(agent.id, agent);
+        this.agentRegistry.set(agent.id, {
+          ...agent,
+          status: agent.status as "available" | "busy" | "offline",
+        });
       });
 
       return JSON.stringify({
@@ -341,4 +344,8 @@ export class Level4AA2AActionProvider extends ActionProvider<WalletProvider> {
  * Factory function to create Level 4A action provider
  */
 export const level4AA2AActionProvider = () => new Level4AA2AActionProvider();
+
+
+
+
 

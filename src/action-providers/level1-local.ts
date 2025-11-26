@@ -95,7 +95,7 @@ export class Level1LocalActionProvider extends ActionProvider<WalletProvider> {
         }
       });
 
-      const riskLevel = analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
+      const riskLevel = analysis.riskScore >= 75 ? "CRITICAL" : analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
 
       // Record event
       securityAnalytics.recordEvent({
@@ -193,7 +193,7 @@ export class Level1LocalActionProvider extends ActionProvider<WalletProvider> {
         analysis.riskScore += 30;
       }
 
-      const riskLevel = analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
+      const riskLevel = analysis.riskScore >= 75 ? "CRITICAL" : analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
 
       // Record event
       securityAnalytics.recordEvent({
@@ -320,7 +320,7 @@ export class Level1LocalActionProvider extends ActionProvider<WalletProvider> {
         }
       });
 
-      const riskLevel = analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
+      const riskLevel = analysis.riskScore >= 75 ? "CRITICAL" : analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
 
       // Record event
       securityAnalytics.recordEvent({
@@ -473,4 +473,8 @@ export class Level1LocalActionProvider extends ActionProvider<WalletProvider> {
  * Factory function to create Level 1 action provider
  */
 export const level1LocalActionProvider = () => new Level1LocalActionProvider();
+
+
+
+
 

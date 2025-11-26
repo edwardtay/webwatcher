@@ -171,7 +171,9 @@ export class Level4BX402ActionProvider extends ActionProvider<WalletProvider> {
       // 5. Send payment proof to facilitator
       // 6. Receive resource after verification
 
-      const walletDetails = await walletProvider.getWalletDetails();
+      // Get wallet address - WalletProvider interface may vary
+      const walletAddress = (walletProvider as any).getAddress?.() || (walletProvider as any).address || "0x0000000000000000000000000000000000000000";
+      const walletDetails = { address: walletAddress };
       
       // Mock payment transaction
       const paymentTx = {
@@ -389,4 +391,8 @@ export class Level4BX402ActionProvider extends ActionProvider<WalletProvider> {
  * Factory function to create Level 4B action provider
  */
 export const level4BX402ActionProvider = () => new Level4BX402ActionProvider();
+
+
+
+
 

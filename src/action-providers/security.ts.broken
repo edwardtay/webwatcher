@@ -1,0 +1,315 @@
+import {
+  ActionProvider,
+  WalletProvider,
+  Network,
+  CreateAction,
+} from "@coinbase/agentkit";
+import { z } from "zod";
+import { createPublicClient, http, formatEther } from "viem";
+import { baseSepolia, base } from "viem/chains";
+
+/**
+ * Security Action Provider for blockchain threat detection and monitoring
+ */
+export class SecurityActionProvider extends ActionProvider<WalletProvider> {
+  constructor() {
+    super("security-action-provider", []);
+  }
+
+  supportsNetwork = (network: Network) => {
+    return network.includes("base") || network.includes("ethereum");
+  };
+
+  /**
+   * Get public client for blockchain queries
+   */
+  private getPublicClient(networkId: string) {
+    const chain = networkId.includes("mainnet")
+      ? base
+      : baseSepolia;
+    
+    return createPublicClient({
+      chain,
+      transport: http(),
+    });
+  }
+
+  /**
+   * Monitor transaction for suspicious patterns
+   */
+  @CreateAction({
+    name: "monitor_transaction",
+    description:
+      "Monitors a specific transaction hash for suspicious activity patterns including unusual amounts, rapid transfers, or known malicious addresses",
+    schema: z.object({
+      transactionHash: z.string().describe("The transaction hash to monitor"),
+      address: z.string().optional().describe("Optional: specific address to monitor"),
+    }),
+  })
+  async monitorTransaction(
+    walletProvider: WalletProvider,
+    args: z.infer<typeof z.object({
+      transactionHash: z.string().describe("The transaction hash to monitor"),
+      address: z.string().optional().describe("Optional: specific address to monitor"),
+    })>,
+  ): Promise<string> {
+    try {
+      const walletDetails = await walletProvider.getWalletDetails();
+      const networkId = walletDetails.networkId || "base-sepolia";
+      const publicClient = this.getPublicClient(networkId);
+
+      const tx = await publicClient.getTransaction({
+        hash: args.transactionHash as `0x${string}`,
+      });
+
+      const receipt = await publicClient.getTransactionReceipt({
+        hash: args.transactionHash as `0x${string}`,
+      });
+
+      // Analyze transaction for suspicious patterns
+      const analysis = {
+        hash: args.transactionHash,
+        from: tx.from,
+        to: tx.to,
+        value: formatEther(tx.value),
+        gasUsed: receipt.gasUsed.toString(),
+        status: receipt.status,
+        timestamp: new Date().toISOString(),
+        risks: [] as string[],
+        riskScore: 0,
+      };
+
+      // Risk detection logic
+      const valueInEth = parseFloat(analysis.value);
+      
+      // Check for unusually large transfers
+      if (valueInEth > 100) {
+        analysis.risks.push("Large transfer detected (>100 ETH)");
+        analysis.riskScore += 30;
+      }
+
+      // Check for zero-value transactions (potential spam)
+      if (valueInEth === 0 && receipt.gasUsed > BigInt(21000)) {
+        analysis.risks.push("Zero-value transaction with high gas usage");
+        analysis.riskScore += 10;
+      }
+
+      // Check for failed transactions
+      if (receipt.status === "reverted") {
+        analysis.risks.push("Transaction failed/reverted");
+        analysis.riskScore += 20;
+      }
+
+      // Check for high gas usage
+      const gasUsed = Number(receipt.gasUsed);
+      if (gasUsed > 500000) {
+        analysis.risks.push("High gas usage detected (potential complex contract interaction)");
+        analysis.riskScore += 15;
+      }
+
+      const riskLevel = analysis.riskScore >= 50 ? "HIGH" : analysis.riskScore >= 25 ? "MEDIUM" : "LOW";
+
+      return JSON.stringify({
+        ...analysis,
+        riskLevel,
+        recommendation: riskLevel === "HIGH" 
+          ? "Immediate review recommended" 
+          : riskLevel === "MEDIUM"
+          ? "Monitor closely"
+          : "Appears normal",
+      }, null, 2);
+    } catch (error) {
+      return `Error monitoring transaction: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Analyze address for suspicious activity
+   */
+  @CreateAction({
+    name: "analyze_address",
+    description:
+      "Analyzes a blockchain address for suspicious patterns including transaction history, balance anomalies, and known threat indicators",
+    schema: z.object({
+      address: z.string().describe("The blockchain address to analyze"),
+      lookbackDays: z.number().optional().default(7).describe("Number of days to look back for analysis"),
+    }),
+  })
+  async analyzeAddress(
+    walletProvider: WalletProvider,
+    args: { address: string; lookbackDays?: number },
+  ): Promise<string> {
+    try {
+      const walletDetails = await walletProvider.getWalletDetails();
+      const networkId = walletDetails.networkId || "base-sepolia";
+      const publicClient = this.getPublicClient(networkId);
+
+      const address = args.address as `0x${string}`;
+      const balance = await publicClient.getBalance({ address });
+      const balanceEth = formatEther(balance);
+
+      // Get recent transactions (simplified - in production, use indexer API)
+      const blockNumber = await publicClient.getBlockNumber();
+      const currentBlock = Number(blockNumber);
+      
+      // Estimate blocks to check (assuming ~2s block time on Base)
+      const blocksPerDay = 43200; // 24 * 60 * 60 / 2
+      const blocksToCheck = (args.lookbackDays || 7) * blocksPerDay;
+      const startBlock = Math.max(0, currentBlock - blocksToCheck);
+
+      const analysis = {
+        address: args.address,
+        balance: balanceEth,
+        network: networkId,
+        analysisDate: new Date().toISOString(),
+        lookbackDays: args.lookbackDays || 7,
+        risks: [] as string[],
+        riskScore: 0,
+        indicators: {
+          isContract: false,
+          hasRecentActivity: false,
+          balanceAnomaly: false,
+        },
+      };
+
+      // Check if address is a contract
+      const code = await publicClient.getBytecode({ address });
+      if (code && code !== "0x") {
+        analysis.indicators.isContract = true;
+        analysis.risks.push("Address is a smart contract - verify contract source code");
+        analysis.riskScore += 10;
+      }
+
+      // Check for balance anomalies
+      const balanceNum = parseFloat(balanceEth);
+      if (balanceNum === 0) {
+        analysis.indicators.balanceAnomaly = true;
+        analysis.risks.push("Zero balance address");
+        analysis.riskScore += 5;
+      } else if (balanceNum > 1000) {
+        analysis.risks.push("High balance detected - verify legitimacy");
+        analysis.riskScore += 15;
+      }
+
+      const riskLevel = analysis.riskScore >= 30 ? "HIGH" : analysis.riskScore >= 15 ? "MEDIUM" : "LOW";
+
+      return JSON.stringify({
+        ...analysis,
+        riskLevel,
+        recommendation: riskLevel === "HIGH"
+          ? "Exercise caution when interacting with this address"
+          : riskLevel === "MEDIUM"
+          ? "Verify address before significant interactions"
+          : "Address appears normal",
+      }, null, 2);
+    } catch (error) {
+      return `Error analyzing address: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Monitor wallet balance for anomalies
+   */
+  @CreateAction({
+    name: "monitor_wallet_balance",
+    description:
+      "Monitors the agent's wallet balance and alerts if there are unexpected changes or anomalies",
+    schema: z.object({
+      threshold: z.number().optional().describe("Alert threshold in ETH for balance changes"),
+    }),
+  })
+  async monitorWalletBalance(
+    walletProvider: WalletProvider,
+    args: { threshold?: number },
+  ): Promise<string> {
+    try {
+      const walletDetails = await walletProvider.getWalletDetails();
+      const balance = walletDetails.balances?.nativeBalance || "0";
+      const balanceEth = parseFloat(formatEther(BigInt(balance)));
+
+      const threshold = args.threshold || 0.01; // Default 0.01 ETH threshold
+
+      const monitoring = {
+        walletAddress: walletDetails.address,
+        currentBalance: balanceEth,
+        network: walletDetails.networkId,
+        timestamp: new Date().toISOString(),
+        threshold,
+        alerts: [] as string[],
+      };
+
+      if (balanceEth < threshold) {
+        monitoring.alerts.push(`Low balance warning: ${balanceEth} ETH (below threshold of ${threshold} ETH)`);
+      }
+
+      if (balanceEth === 0) {
+        monitoring.alerts.push("CRITICAL: Wallet balance is zero");
+      }
+
+      return JSON.stringify({
+        ...monitoring,
+        status: monitoring.alerts.length > 0 ? "ALERT" : "NORMAL",
+        recommendation: monitoring.alerts.length > 0
+          ? "Consider requesting funds from faucet or depositing more funds"
+          : "Wallet balance is healthy",
+      }, null, 2);
+    } catch (error) {
+      return `Error monitoring wallet balance: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+
+  /**
+   * Get security summary for the agent's wallet
+   */
+  @CreateAction({
+    name: "get_security_summary",
+    description:
+      "Provides a comprehensive security summary including wallet status, recent activity, and risk assessment",
+    schema: z.object({}),
+  })
+  async getSecuritySummary(
+    walletProvider: WalletProvider,
+    _args: Record<string, never>,
+  ): Promise<string> {
+    try {
+      const walletDetails = await walletProvider.getWalletDetails();
+      const networkId = walletDetails.networkId || "base-sepolia";
+      const publicClient = this.getPublicClient(networkId);
+
+      const address = walletDetails.address as `0x${string}`;
+      const balance = await publicClient.getBalance({ address });
+      const balanceEth = formatEther(balance);
+
+      const summary = {
+        walletAddress: walletDetails.address,
+        network: networkId,
+        balance: balanceEth,
+        timestamp: new Date().toISOString(),
+        securityStatus: "ACTIVE",
+        recommendations: [] as string[],
+      };
+
+      // Security checks
+      if (parseFloat(balanceEth) < 0.01) {
+        summary.recommendations.push("Low balance - consider requesting testnet funds");
+      }
+
+      // Check if wallet is a contract (shouldn't be for agent wallets)
+      const code = await publicClient.getBytecode({ address });
+      if (code && code !== "0x") {
+        summary.securityStatus = "WARNING";
+        summary.recommendations.push("Wallet appears to be a contract - verify configuration");
+      }
+
+      return JSON.stringify(summary, null, 2);
+    } catch (error) {
+      return `Error getting security summary: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
+}
+
+/**
+ * Factory function to create security action provider
+ */
+export const securityActionProvider = () => new SecurityActionProvider();
+

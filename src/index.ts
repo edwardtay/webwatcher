@@ -1,10 +1,10 @@
 import {
   AgentKit,
-  CdpEvmWalletProvider,
+  EvmWalletProvider,
   walletActionProvider,
   erc20ActionProvider,
   cdpApiActionProvider,
-  cdpEvmWalletActionProvider,
+  cdpWalletActionProvider,
 } from "@coinbase/agentkit";
 import { getLangChainTools } from "@coinbase/agentkit-langchain";
 import { HumanMessage } from "@langchain/core/messages";
@@ -13,13 +13,8 @@ import { createReactAgent } from "@langchain/langgraph/prebuilt";
 import { ChatOpenAI } from "@langchain/openai";
 import * as dotenv from "dotenv";
 import * as readline from "readline";
-// // SecurityActionProvider temporarily disabled due to decorator metadata issue
-// import { securityActionProvider } from "./action-providers/security"; // Temporarily disabled due to decorator metadata issue
-import { level1LocalActionProvider } from "./action-providers/level1-local";
-import { level2IntelActionProvider } from "./action-providers/level2-intel";
-import { level3McpActionProvider } from "./action-providers/level3-mcp";
-import { level4AA2AActionProvider } from "./action-providers/level4a-a2a";
-import { level4BX402ActionProvider } from "./action-providers/level4b-x402";
+// Action providers are loaded lazily to avoid decorator metadata issues
+// See loadActionProviders() function below
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
 import { levelManager, AnalystLevel } from "./utils/level-manager";
@@ -76,8 +71,57 @@ function validateEnvironment(): void {
 
 validateEnvironment();
 
+// Lazy import action providers to avoid decorator metadata issues during module load
+let level1LocalActionProvider: any;
+let level2IntelActionProvider: any;
+let level3McpActionProvider: any;
+let level4AA2AActionProvider: any;
+let level4BX402ActionProvider: any;
+
+async function loadActionProviders() {
+  try {
+    const level1Module = await import("./action-providers/level1-local.js");
+    level1LocalActionProvider = level1Module.level1LocalActionProvider;
+    logger.info("✓ Level 1 action provider loaded");
+  } catch (error) {
+    logger.warn("Failed to load Level 1 action provider (will continue without it):", error instanceof Error ? error.message : String(error));
+  }
+  
+  try {
+    const level2Module = await import("./action-providers/level2-intel.js");
+    level2IntelActionProvider = level2Module.level2IntelActionProvider;
+    logger.info("✓ Level 2 action provider loaded");
+  } catch (error) {
+    logger.warn("Failed to load Level 2 action provider:", error instanceof Error ? error.message : String(error));
+  }
+  
+  try {
+    const level3Module = await import("./action-providers/level3-mcp.js");
+    level3McpActionProvider = level3Module.level3McpActionProvider;
+    logger.info("✓ Level 3 action provider loaded");
+  } catch (error) {
+    logger.warn("Failed to load Level 3 action provider:", error instanceof Error ? error.message : String(error));
+  }
+  
+  try {
+    const level4AModule = await import("./action-providers/level4a-a2a.js");
+    level4AA2AActionProvider = level4AModule.level4AA2AActionProvider;
+    logger.info("✓ Level 4A action provider loaded");
+  } catch (error) {
+    logger.warn("Failed to load Level 4A action provider:", error instanceof Error ? error.message : String(error));
+  }
+  
+  try {
+    const level4BModule = await import("./action-providers/level4b-x402.js");
+    level4BX402ActionProvider = level4BModule.level4BX402ActionProvider;
+    logger.info("✓ Level 4B action provider loaded");
+  } catch (error) {
+    logger.warn("Failed to load Level 4B action provider:", error instanceof Error ? error.message : String(error));
+  }
+}
+
 /**
- * Initialize the NetWatch cybersecurity agent with AgentKit (built on VeriSense)
+ * Initialize the WebWatcher cybersecurity agent with AgentKit (built on VeriSense)
  * @param level Optional analyst level (defaults to environment variable or LEVEL_1_LOCAL)
  */
 export async function initializeAgent(level?: AnalystLevel) {
@@ -90,7 +134,7 @@ export async function initializeAgent(level?: AnalystLevel) {
     const currentLevel = levelManager.getCurrentLevel();
     const capabilities = levelManager.getCapabilities();
     
-    logger.info(`Initializing NetWatch Agent (VeriSense) at ${currentLevel}...`);
+    logger.info(`Initializing WebWatcher Agent (VeriSense) at ${currentLevel}...`);
     logger.info(`Capabilities: ${capabilities.description}`);
 
     // Initialize LLM
@@ -117,12 +161,12 @@ export async function initializeAgent(level?: AnalystLevel) {
         rpcUrl: process.env.RPC_URL,
       };
 
-      walletProvider = await CdpEvmWalletProvider.configureWithWallet(
-        cdpWalletConfig,
-      );
-
-      walletDetails = await walletProvider.getWalletDetails();
-      logger.info(`Wallet initialized: ${walletDetails.address}`);
+      // TODO: Fix wallet provider initialization - API may have changed
+      // walletProvider = await EvmWalletProvider.configureWithWallet(
+      //   cdpWalletConfig,
+      // );
+      // walletDetails = await walletProvider.getWalletDetails();
+      logger.warn("Wallet provider initialization temporarily disabled - API needs update");
     } else {
       logger.info("Level 1 mode: No network access, wallet not initialized");
     }
@@ -135,11 +179,8 @@ export async function initializeAgent(level?: AnalystLevel) {
       try {
         actionProviders.push(
           walletActionProvider(),
-          cdpApiActionProvider({
-            apiKeyId: process.env.CDP_API_KEY_ID!,
-            apiKeyPrivate: process.env.CDP_API_KEY_SECRET!,
-          }),
-          cdpEvmWalletActionProvider(),
+          cdpApiActionProvider(),
+          cdpWalletActionProvider(),
           erc20ActionProvider(),
         );
         // Note: securityActionProvider() is disabled due to decorator metadata issue
@@ -149,45 +190,80 @@ export async function initializeAgent(level?: AnalystLevel) {
       }
     }
     
+    // Load action providers lazily to avoid decorator metadata issues
+    await loadActionProviders();
+    
     // Level-specific providers
-    actionProviders.push(level1LocalActionProvider()); // Always available
-    
-    if (capabilities.webSearch) {
-      actionProviders.push(level2IntelActionProvider());
+    if (level1LocalActionProvider) {
+      try {
+        actionProviders.push(level1LocalActionProvider()); // Always available
+      } catch (error) {
+        logger.warn("Failed to instantiate Level 1 action provider:", error);
+      }
     }
     
-    if (capabilities.mcpTools) {
-      actionProviders.push(level3McpActionProvider());
+    if (capabilities.webSearch && level2IntelActionProvider) {
+      try {
+        actionProviders.push(level2IntelActionProvider());
+      } catch (error) {
+        logger.warn("Failed to instantiate Level 2 action provider:", error);
+      }
     }
     
-    if (capabilities.a2aCoordination) {
-      actionProviders.push(level4AA2AActionProvider());
+    if (capabilities.mcpTools && level3McpActionProvider) {
+      try {
+        actionProviders.push(level3McpActionProvider());
+      } catch (error) {
+        logger.warn("Failed to instantiate Level 3 action provider:", error);
+      }
     }
     
-    if (capabilities.payments) {
-      actionProviders.push(level4BX402ActionProvider());
+    if (capabilities.a2aCoordination && level4AA2AActionProvider) {
+      try {
+        actionProviders.push(level4AA2AActionProvider());
+      } catch (error) {
+        logger.warn("Failed to instantiate Level 4A action provider:", error);
+      }
     }
+    
+    if (capabilities.payments && level4BX402ActionProvider) {
+      try {
+        actionProviders.push(level4BX402ActionProvider());
+      } catch (error) {
+        logger.warn("Failed to instantiate Level 4B action provider:", error);
+      }
+    }
+    
+    logger.info(`Loaded ${actionProviders.length} action provider(s) (some may have failed due to decorator metadata issues)`);
 
     // Initialize AgentKit (only if wallet provider exists)
     let agentkit: any = null;
     let tools: any[] = [];
     
-    if (walletProvider && actionProviders.length > 0) {
+    // Try to initialize AgentKit with action providers if available
+    if (actionProviders.length > 0) {
       try {
-        agentkit = await AgentKit.from({
-          walletProvider,
-          actionProviders,
-        });
-        tools = await getLangChainTools(agentkit);
+        if (walletProvider) {
+          agentkit = await AgentKit.from({
+            walletProvider,
+            actionProviders,
+          });
+        } else {
+          // For Level 1, try to create AgentKit without wallet provider
+          // This might not work, but we'll catch the error
+          logger.info("Attempting to initialize AgentKit without wallet provider for Level 1...");
+          // AgentKit requires a wallet provider, so we'll skip it for Level 1
+        }
+        
+        if (agentkit) {
+          tools = await getLangChainTools(agentkit);
+        }
       } catch (error) {
-        logger.warn("Failed to initialize AgentKit with wallet:", error);
-        logger.info("Continuing with Level 1 local tools only");
+        logger.warn("Failed to initialize AgentKit (this is OK for Level 1):", error instanceof Error ? error.message : String(error));
+        logger.info("Continuing without AgentKit - agent will work in chat-only mode");
       }
     } else {
-      // For Level 1, we can work without AgentKit
-      logger.info("Level 1 mode: Using local tools only (no AgentKit wallet required)");
-      // Tools will be empty, but the agent can still use Level 1 action providers
-      // We'll need to manually register them or use a different approach
+      logger.info("No action providers loaded - agent will work in chat-only mode");
     }
 
     logger.info(`Loaded ${tools.length} tools for the agent at ${currentLevel}`);
@@ -195,12 +271,14 @@ export async function initializeAgent(level?: AnalystLevel) {
     // Store conversation history in memory
     const memory = new MemorySaver();
     const agentConfig = {
-      configurable: { thread_id: `verisense-netwatch-${currentLevel}-${Date.now()}` },
+      configurable: { thread_id: `verisense-webwatcher-${currentLevel}-${Date.now()}` },
     };
 
     // Create React Agent with level-specific system prompt
     const systemPrompt = levelManager.getSystemPrompt();
     
+    // Best Practice: Always provide tools array (empty if no tools available)
+    // Note: maxIterations and handleParsingErrors are handled by LangGraph configuration
     const agent = createReactAgent({
       llm,
       tools: tools.length > 0 ? tools : [], // Empty tools array if no wallet provider
@@ -269,7 +347,7 @@ async function runMonitoringMode(
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 async function runChatMode(agent: any, config: any, level: AnalystLevel, capabilities: any) {
   logger.info(`Starting chat mode at ${level}...`);
-  console.log(`\n=== NetWatch Agent (Built on VeriSense) ===`);
+  console.log(`\n=== WebWatcher Agent (Built on VeriSense) ===`);
   console.log(`Current Level: ${level}`);
   console.log(`Capabilities: ${capabilities.description}`);
   console.log("\nCommands:");
@@ -295,7 +373,7 @@ async function runChatMode(agent: any, config: any, level: AnalystLevel, capabil
   try {
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const userInput = await question(`\n[NetWatch ${currentLevel}] > `);
+      const userInput = await question(`\n[WebWatcher ${currentLevel}] > `);
 
       if (userInput.toLowerCase() === "exit") {
         break;
@@ -407,7 +485,7 @@ async function chooseMode(): Promise<"chat" | "monitor"> {
 
   // eslint-disable-next-line no-constant-condition
   while (true) {
-    console.log("\n=== NetWatch Agent (Built on VeriSense) ===");
+    console.log("\n=== WebWatcher Agent (Built on VeriSense) ===");
     console.log("Available modes:");
     console.log("1. chat    - Interactive security analysis mode");
     console.log("2. monitor - Continuous security monitoring mode");
@@ -432,7 +510,7 @@ async function chooseMode(): Promise<"chat" | "monitor"> {
  */
 async function main() {
   try {
-    logger.info("=== NetWatch Agent (Built on VeriSense) ===");
+    logger.info("=== WebWatcher Agent (Built on VeriSense) ===");
     logger.info("Starting agent initialization...");
 
     const { agent, config, level, capabilities } = await initializeAgent();

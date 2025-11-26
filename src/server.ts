@@ -1,7 +1,28 @@
 import express from "express";
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
+import { validateInput } from "./utils/input-validator";
+import { exaSearch } from "./utils/mcp-client.js";
 import * as dotenv from "dotenv";
+
+// Helper function to extract title from URL
+function extractTitleFromUrl(url: string): string {
+  if (!url) return "";
+  try {
+    const urlObj = new URL(url);
+    const pathParts = urlObj.pathname.split('/').filter(p => p);
+    if (pathParts.length > 0) {
+      const lastPart = pathParts[pathParts.length - 1];
+      return decodeURIComponent(lastPart)
+        .replace(/[-_]/g, ' ')
+        .replace(/\.[^.]*$/, '')
+        .replace(/\b\w/g, (l) => l.toUpperCase());
+    }
+    return urlObj.hostname.replace(/^www\./, '');
+  } catch (e) {
+    return url.substring(0, 50);
+  }
+}
 
 // Lazy import to avoid decorator metadata issues during module load
 let initializeAgent: any;
@@ -72,7 +93,7 @@ async function loadAgentModules() {
 dotenv.config();
 
 const app = express();
-const PORT = process.env.PORT || 3000;
+const PORT = parseInt(process.env.PORT || "3000", 10);
 
 // Middleware
 app.use(express.json());
@@ -187,11 +208,14 @@ app.get("/api/levels", (req, res) => {
   }
   res.json({
     currentLevel: currentLevel,
-    availableLevels: Object.values(AnalystLevel).map((level: string) => ({
-      id: level,
-      name: level.replace("LEVEL_", "").replace("_", " ").toUpperCase(),
-      capabilities: levelManager.getCapabilities(),
-    })),
+    availableLevels: (AnalystLevel ? Object.values(AnalystLevel) : []).map((level: unknown) => {
+      const levelStr = String(level);
+      return {
+        id: levelStr,
+        name: levelStr.replace("LEVEL_", "").replace("_", " ").toUpperCase(),
+        capabilities: levelManager.getCapabilities(),
+      };
+    }),
     allCapabilities: Object.entries(AnalystLevel).map(([key, level]) => ({
       level,
       capabilities: (() => {
@@ -264,6 +288,36 @@ app.post("/api/chat", async (req, res) => {
       });
     }
 
+    // Input validation and sanitization (best practice: guardrails)
+    const inputValidation = validateInput(message);
+    if (!inputValidation.valid) {
+      return res.status(400).json({
+        error: "Invalid input",
+        message: inputValidation.error,
+      });
+    }
+    
+    const sanitizedMessage = inputValidation.sanitized;
+
+    // Check if this is a search query and try Exa search directly
+    const searchKeywords = ["search", "find", "look up", "cve", "vulnerability", "what is", "tell me about"];
+    const isSearchQuery = searchKeywords.some(keyword => 
+      sanitizedMessage.toLowerCase().includes(keyword)
+    );
+    
+    let exaSearchResults: Array<{ title: string; url: string; text: string; snippet?: string; source?: string }> = [];
+    if (isSearchQuery) {
+      try {
+        logger.info(`Detected search query, attempting Exa search: ${sanitizedMessage}`);
+        exaSearchResults = await exaSearch(sanitizedMessage, 5);
+        const mcpCount = exaSearchResults.filter((r: any) => r.source === "MCP").length;
+        const apiCount = exaSearchResults.filter((r: any) => r.source === "API").length;
+        logger.info(`Exa search returned ${exaSearchResults.length} results (${mcpCount} from MCP, ${apiCount} from API)`);
+      } catch (error) {
+        logger.warn("Exa search failed, continuing with agent response", error);
+      }
+    }
+
     // Ensure modules are loaded
     if (!HumanMessage || !initializeAgent) {
       await loadAgentModules();
@@ -314,12 +368,13 @@ app.post("/api/chat", async (req, res) => {
     };
 
     const stream = await agent.stream(
-      { messages: [new HumanMessage(message)] },
+      { messages: [new HumanMessage(sanitizedMessage)] },
       configWithThread,
     );
 
     let fullResponse = "";
     const chunks: string[] = [];
+    let agentExaResults: Array<{ title: string; url: string; text: string; snippet?: string }> = [];
 
     for await (const chunk of stream) {
       if ("agent" in chunk) {
@@ -327,14 +382,67 @@ app.post("/api/chat", async (req, res) => {
         fullResponse += content;
         chunks.push(content);
       } else if ("tools" in chunk) {
-        logger.debug("Tool execution:", chunk.tools.messages[0].content);
+        const toolContent = chunk.tools.messages[0].content;
+        logger.debug("Tool execution:", toolContent);
+        
+        // Check if this is an Exa search result
+        try {
+          // Try to parse JSON from tool response
+          const jsonMatch = toolContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.results && Array.isArray(parsed.results) && parsed.query) {
+              // This looks like Exa search results
+              agentExaResults = parsed.results;
+              logger.info(`Exa search executed: "${parsed.query}" returned ${parsed.results.length} results`);
+            }
+          }
+        } catch (e) {
+          // Not JSON or not Exa results, continue
+        }
       }
     }
 
+    // Use agent results if available, otherwise use direct Exa search results
+    const finalExaResults = agentExaResults.length > 0 ? agentExaResults : exaSearchResults;
+    
+    // Enhance response with Exa results if available
+    let enhancedResponse = fullResponse;
+    if (finalExaResults.length > 0) {
+      // Add search results to response with better formatting
+      if (!fullResponse.includes("**Search Results:**")) {
+        enhancedResponse += "\n\n**Search Results:**\n\n";
+      }
+      finalExaResults.slice(0, 5).forEach((result, idx) => {
+        const title = result.title && result.title !== "Untitled" && result.title !== "Search Result" 
+          ? result.title 
+          : result.url 
+            ? extractTitleFromUrl(result.url) 
+            : `Result ${idx + 1}`;
+        const url = result.url || "";
+        const source = (result as any).source || "Unknown";
+        const sourceBadge = source === "MCP" ? "🔌 MCP" : source === "API" ? "🌐 API" : "";
+        
+        if (url) {
+          enhancedResponse += `${idx + 1}. **[${title}](${url})** ${sourceBadge ? `*(${sourceBadge})*` : ""}\n`;
+        } else {
+          enhancedResponse += `${idx + 1}. **${title}** ${sourceBadge ? `*(${sourceBadge})*` : ""}\n`;
+        }
+        
+        if (result.snippet && result.snippet.trim()) {
+          enhancedResponse += `   ${result.snippet.trim()}\n`;
+        } else if (result.text && result.text.trim()) {
+          enhancedResponse += `   ${result.text.trim().substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`;
+        }
+        enhancedResponse += "\n";
+      });
+    }
+
     res.json({
-      response: fullResponse,
+      response: enhancedResponse,
       chunks,
       threadId: configWithThread.configurable.thread_id,
+      ...(finalExaResults.length > 0 && { exaSearchResults: finalExaResults }),
     });
   } catch (error) {
     logger.error("Error in chat endpoint", error);
@@ -434,6 +542,388 @@ app.post("/api/wallet/connect", (req, res) => {
   }
 });
 
+/**
+ * Exa search endpoint using MCP server
+ */
+app.post("/api/exa/search", async (req, res) => {
+  try {
+    const { query } = req.body;
+
+    if (!query || typeof query !== "string") {
+      return res.status(400).json({
+        error: "Query is required and must be a string",
+      });
+    }
+
+    // Input validation
+    const inputValidation = validateInput(query);
+    if (!inputValidation.valid) {
+      return res.status(400).json({
+        error: "Invalid input",
+        message: inputValidation.error,
+      });
+    }
+
+    logger.info(`Exa search request: ${query}`);
+
+    // Use agent with MCP tools to perform Exa search
+    const { agent, config } = await getAgent();
+    
+    if (!HumanMessage) {
+      await loadAgentModules();
+      if (!HumanMessage) {
+        return res.status(503).json({
+          error: "Missing dependencies",
+          message: "HumanMessage class not available",
+        });
+      }
+    }
+
+    // Create search prompt that will trigger Exa MCP tool
+    const searchPrompt = `Search the web using Exa for: ${inputValidation.sanitized}`;
+    
+    const stream = await agent.stream(
+      { messages: [new HumanMessage(searchPrompt)] },
+      config,
+    );
+
+    let fullResponse = "";
+    const searchResults: Array<{ title: string; url: string; text: string; snippet?: string }> = [];
+
+    for await (const chunk of stream) {
+      if ("agent" in chunk) {
+        const content = chunk.agent.messages[0].content;
+        fullResponse += content;
+      } else if ("tools" in chunk) {
+        // Extract search results from tool execution
+        const toolContent = chunk.tools.messages[0].content;
+        logger.debug("Exa tool execution:", toolContent);
+        
+        // Try to parse JSON results from tool response
+        try {
+          const jsonMatch = toolContent.match(/\{[\s\S]*\}/);
+          if (jsonMatch) {
+            const parsed = JSON.parse(jsonMatch[0]);
+            if (parsed.results && Array.isArray(parsed.results)) {
+              searchResults.push(...parsed.results);
+            } else if (parsed.title || parsed.url) {
+              searchResults.push(parsed);
+            }
+          }
+        } catch (e) {
+          // If not JSON, try to extract URLs and text from response
+          const urlRegex = /https?:\/\/[^\s]+/g;
+          const urls = toolContent.match(urlRegex) || [];
+          urls.forEach((url: string, idx: number) => {
+            if (!searchResults.find(r => r.url === url)) {
+              searchResults.push({
+                title: `Result ${idx + 1}`,
+                url: url,
+                text: toolContent.substring(0, 200),
+                snippet: toolContent.substring(0, 150),
+              });
+            }
+          });
+        }
+      }
+    }
+
+    // If no structured results found, try to extract from full response
+    if (searchResults.length === 0 && fullResponse) {
+      const urlRegex = /https?:\/\/[^\s\)]+/g;
+      const urls = fullResponse.match(urlRegex) || [];
+      urls.slice(0, 10).forEach((url: string, idx: number) => {
+        searchResults.push({
+          title: `Search Result ${idx + 1}`,
+          url: url,
+          text: fullResponse.substring(0, 200),
+          snippet: fullResponse.substring(0, 150),
+        });
+      });
+    }
+
+    // If still no results, return a message indicating search was performed
+    if (searchResults.length === 0) {
+      return res.json({
+        results: [],
+        message: "Search completed but no structured results found",
+        rawResponse: fullResponse.substring(0, 500),
+      });
+    }
+
+    res.json({
+      results: searchResults,
+      query: inputValidation.sanitized,
+    });
+  } catch (error) {
+    logger.error("Error performing Exa search", error);
+    res.status(500).json({
+      error: "Failed to perform search",
+      message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+// Serve Exa search page
+app.get("/exa", (req, res) => {
+  res.setHeader("Content-Type", "text/html");
+  res.send(`
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Exa Web Search - VeriSense</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            font-family: 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace;
+            background: #0a0e1a;
+            background-image: 
+                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
+                radial-gradient(circle at 80% 80%, rgba(0, 255, 200, 0.03) 0%, transparent 50%);
+            min-height: 100vh;
+            padding: 20px;
+            color: #a0a8b8;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: #0f1419;
+            border: 1px solid rgba(0, 255, 255, 0.15);
+            border-radius: 8px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 255, 255, 0.05);
+            overflow: hidden;
+        }
+        .header {
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 200, 255, 0.08) 100%);
+            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
+            color: #e0e8f0;
+            padding: 30px;
+            text-align: center;
+            box-shadow: inset 0 -1px 0 rgba(0, 255, 255, 0.1);
+        }
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        .content {
+            padding: 30px;
+        }
+        .search-section {
+            background: rgba(0, 255, 255, 0.05);
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 20px;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+        }
+        .search-input-group {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+        }
+        .search-input-group input {
+            flex: 1;
+            padding: 14px 16px;
+            background: #0a0e14;
+            border: 1px solid rgba(0, 255, 255, 0.2);
+            border-radius: 4px;
+            font-size: 1em;
+            color: #e0e8f0;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+        .search-input-group input:focus {
+            outline: none;
+            border-color: rgba(0, 255, 255, 0.4);
+            box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1), 0 0 10px rgba(0, 255, 255, 0.1);
+            background: #0f1419;
+        }
+        .search-input-group button {
+            padding: 14px 28px;
+            background: rgba(0, 255, 255, 0.1);
+            color: #00ffff;
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: bold;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
+        }
+        .search-input-group button:hover:not(:disabled) {
+            background: rgba(0, 255, 255, 0.15);
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2), 0 2px 8px rgba(0, 255, 255, 0.15);
+            transform: translateY(-1px);
+        }
+        .search-input-group button:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+            transform: none;
+        }
+        .results-section {
+            margin-top: 20px;
+        }
+        .result-item {
+            background: #0a0e14;
+            border: 1px solid rgba(0, 255, 255, 0.1);
+            border-radius: 6px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s;
+        }
+        .result-item:hover {
+            border-color: rgba(0, 255, 255, 0.3);
+            box-shadow: 0 4px 12px rgba(0, 255, 255, 0.1);
+        }
+        .result-title {
+            color: #00d4ff;
+            font-size: 1.2em;
+            margin-bottom: 10px;
+            font-weight: bold;
+        }
+        .result-title a {
+            color: #00d4ff;
+            text-decoration: none;
+            transition: all 0.3s;
+        }
+        .result-title a:hover {
+            color: #00ffff;
+            text-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+        }
+        .result-url {
+            color: #6a7888;
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            font-family: 'Courier New', monospace;
+        }
+        .result-snippet {
+            color: #a0a8b8;
+            line-height: 1.6;
+            margin-top: 10px;
+        }
+        .loading {
+            text-align: center;
+            color: #6a7888;
+            padding: 40px;
+            font-family: 'Courier New', monospace;
+        }
+        .error {
+            background: rgba(255, 68, 68, 0.1);
+            border: 1px solid rgba(255, 68, 68, 0.3);
+            border-radius: 6px;
+            padding: 15px;
+            color: #ff4444;
+            margin-bottom: 15px;
+        }
+        .no-results {
+            text-align: center;
+            color: #6a7888;
+            padding: 40px;
+            font-family: 'Courier New', monospace;
+        }
+        .back-link {
+            display: inline-block;
+            margin-bottom: 20px;
+            color: #00d4ff;
+            text-decoration: none;
+            font-family: 'Courier New', monospace;
+            transition: all 0.3s;
+        }
+        .back-link:hover {
+            color: #00ffff;
+            text-shadow: 0 0 8px rgba(0, 212, 255, 0.3);
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Exa Web Search</h1>
+            <p>AI-Powered Web Search using Exa MCP Server</p>
+        </div>
+        <div class="content">
+            <a href="/" class="back-link">← Back to WebWatcher</a>
+            <div class="search-section">
+                <div class="search-input-group">
+                    <input type="text" id="searchInput" placeholder="Enter your search query..." onkeypress="if(event.key==='Enter') performSearch()">
+                    <button type="button" onclick="performSearch()" id="searchButton">Search</button>
+                </div>
+            </div>
+            <div id="resultsContainer">
+                <div class="no-results">Enter a search query above to get started</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        async function performSearch() {
+            const input = document.getElementById('searchInput');
+            const button = document.getElementById('searchButton');
+            const resultsContainer = document.getElementById('resultsContainer');
+            
+            const query = input.value.trim();
+            if (!query) {
+                return;
+            }
+            
+            button.disabled = true;
+            button.textContent = 'Searching...';
+            resultsContainer.innerHTML = '<div class="loading">🔍 Searching the web...</div>';
+            
+            try {
+                const response = await fetch('/api/exa/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ query })
+                });
+                
+                if (!response.ok) {
+                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+                    throw new Error(errorData.error || \`HTTP \${response.status}\`);
+                }
+                
+                const data = await response.json();
+                
+                if (data.results && data.results.length > 0) {
+                    resultsContainer.innerHTML = data.results.map(result => \`
+                        <div class="result-item">
+                            <div class="result-title">
+                                <a href="\${result.url}" target="_blank">\${result.title || 'Untitled'}</a>
+                            </div>
+                            <div class="result-url">\${result.url}</div>
+                            <div class="result-snippet">\${result.text || result.snippet || 'No description available'}</div>
+                        </div>
+                    \`).join('');
+                } else {
+                    resultsContainer.innerHTML = '<div class="no-results">No results found. Try a different search query.</div>';
+                }
+            } catch (error) {
+                console.error('Search error:', error);
+                resultsContainer.innerHTML = \`<div class="error">Error: \${error.message || 'Failed to perform search'}</div>\`;
+            } finally {
+                button.disabled = false;
+                button.textContent = 'Search';
+            }
+        }
+    </script>
+</body>
+</html>
+  `);
+});
+
 // Serve HTML interface
 app.get("/", (req, res) => {
   res.setHeader("Content-Type", "text/html");
@@ -486,15 +976,7 @@ app.get("/", (req, res) => {
             font-size: 1.1em;
         }
         .content {
-            display: grid;
-            grid-template-columns: 2fr 1fr;
-            gap: 20px;
             padding: 30px;
-        }
-        @media (max-width: 768px) {
-            .content {
-                grid-template-columns: 1fr;
-            }
         }
         .chat-section {
             background: #f8f9fa;
@@ -678,239 +1160,26 @@ app.get("/", (req, res) => {
             color: #a0d0ff;
             font-family: 'Courier New', monospace;
         }
-        .level-checkboxes {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 12px;
-            justify-content: center;
-            align-items: center;
-            margin-top: 10px;
-        }
-        .level-checkbox-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 12px;
-            background: rgba(0, 255, 255, 0.05);
-            border-radius: 4px;
-            border: 1px solid rgba(0, 255, 255, 0.2);
-            cursor: pointer;
-            transition: all 0.3s;
-        }
-        .level-checkbox-wrapper:hover {
-            background: rgba(0, 255, 255, 0.1);
-            border-color: rgba(0, 255, 255, 0.4);
-        }
-        .level-checkbox-wrapper input[type="checkbox"] {
-            width: 18px;
-            height: 18px;
-            cursor: pointer;
-            accent-color: #00ffff;
-        }
-        .level-checkbox-wrapper input[type="checkbox"]:checked {
-            accent-color: #00ff88;
-        }
-        .level-checkbox-wrapper label {
-            color: #b0b8c8;
-            font-size: 0.9em;
-            cursor: pointer;
-            user-select: none;
-            margin: 0;
-            font-family: 'Courier New', monospace;
-        }
-        .level-checkbox-wrapper input[type="checkbox"]:checked + label {
-            color: #00ffff;
-            font-weight: 600;
-        }
-        .wallet-connect-section {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            gap: 10px;
-            margin-top: 15px;
-        }
-        .connect-wallet-btn {
-            padding: 10px 20px;
-            background: rgba(0, 255, 255, 0.1);
-            color: #00ffff;
-            border: 1px solid rgba(0, 255, 255, 0.3);
-            border-radius: 4px;
-            font-size: 0.95em;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            cursor: pointer;
-            transition: all 0.3s;
-            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
-        }
-        .connect-wallet-btn:hover {
-            background: rgba(0, 255, 255, 0.15);
-            border-color: rgba(0, 255, 255, 0.5);
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2);
-            transform: translateY(-2px);
-        }
-        .wallet-dropdown {
-            position: relative;
-            display: inline-block;
-        }
-        .wallet-menu {
-            display: none;
-            position: absolute;
-            top: 100%;
-            left: 50%;
-            transform: translateX(-50%);
-            margin-top: 8px;
-            background: #0f1419;
-            border: 1px solid rgba(0, 255, 255, 0.2);
-            border-radius: 6px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(0, 255, 255, 0.1);
-            min-width: 200px;
-            z-index: 1000;
-            overflow: hidden;
-        }
-        .wallet-menu.show {
-            display: block;
-        }
-        .wallet-option {
-            padding: 12px 16px;
-            cursor: pointer;
-            transition: all 0.2s;
-            border-bottom: 1px solid rgba(0, 255, 255, 0.1);
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            color: #b0b8c8;
-        }
-        .wallet-option:last-child {
-            border-bottom: none;
-        }
-        .wallet-option:hover {
-            background: rgba(0, 255, 255, 0.1);
-            color: #00ffff;
-        }
-        .wallet-option.evm {
-            border-left: 3px solid rgba(0, 255, 255, 0.4);
-        }
-        .wallet-option.polkadot {
-            border-left: 3px solid rgba(0, 200, 255, 0.4);
-        }
-        .wallet-icon {
-            font-size: 1.2em;
-        }
-        .wallet-info {
-            margin-top: 10px;
-            padding: 8px 12px;
-            background: rgba(0, 255, 255, 0.05);
-            border: 1px solid rgba(0, 255, 255, 0.15);
-            border-radius: 4px;
-            font-size: 0.85em;
-            text-align: center;
-            color: #b0b8c8;
-            font-family: 'Courier New', monospace;
-        }
-        .wallet-address {
-            font-family: 'Courier New', monospace;
-            word-break: break-all;
-            margin-top: 4px;
-            color: #00ffff;
-        }
-        .disconnect-btn {
-            margin-top: 8px;
-            padding: 6px 12px;
-            background: rgba(255, 68, 68, 0.1);
-            color: #ff4444;
-            border: 1px solid rgba(255, 68, 68, 0.3);
-            border-radius: 4px;
-            cursor: pointer;
-            font-size: 0.8em;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s;
-        }
-        .disconnect-btn:hover {
-            background: rgba(255, 68, 68, 0.15);
-            border-color: rgba(255, 68, 68, 0.5);
-        }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <h1>🔒 NetWatch</h1>
-            <p>Cybersecurity Agent for Blockchain Threat Detection</p>
-            <div style="margin-top: 15px; display: flex; justify-content: center; align-items: center; gap: 20px; flex-wrap: wrap;">
-                <div class="level-checkboxes">
-                        <div class="level-checkbox-wrapper">
-                            <input type="checkbox" id="level_3_tools" name="level" value="level_3_tools" onchange="updateLevels()">
-                            <label for="level_3_tools">MCP</label>
-                        </div>
-                        <div class="level-checkbox-wrapper">
-                            <input type="checkbox" id="level_4a_a2a" name="level" value="level_4a_a2a" onchange="updateLevels()">
-                            <label for="level_4a_a2a">A2A</label>
-                        </div>
-                        <div class="level-checkbox-wrapper">
-                            <input type="checkbox" id="level_4b_x402" name="level" value="level_4b_x402" onchange="updateLevels()">
-                            <label for="level_4b_x402">x402</label>
-                        </div>
-                </div>
-            </div>
-            <div id="levelInfo" style="margin-top: 10px; font-size: 0.85em; opacity: 0.9;"></div>
-            <div class="wallet-connect-section">
-                <div class="wallet-dropdown">
-                    <button class="connect-wallet-btn" id="connectWalletBtn" onclick="toggleWalletMenu()">
-                        🔗 Connect Wallet
-                    </button>
-                    <div class="wallet-menu" id="walletMenu">
-                        <div class="wallet-option evm" onclick="connectEVMWallet('metamask')">
-                            <span class="wallet-icon">🦊</span>
-                            <span>MetaMask</span>
-                        </div>
-                        <div class="wallet-option evm" onclick="connectEVMWallet('walletconnect')">
-                            <span class="wallet-icon">🔷</span>
-                            <span>WalletConnect</span>
-                        </div>
-                        <div class="wallet-option evm" onclick="connectEVMWallet('coinbase')">
-                            <span class="wallet-icon">🔵</span>
-                            <span>Coinbase Wallet</span>
-                        </div>
-                        <div class="wallet-option evm" onclick="connectEVMWallet('injected')">
-                            <span class="wallet-icon">💼</span>
-                            <span>Other EVM Wallet</span>
-                        </div>
-                        <div class="wallet-option polkadot" onclick="connectPolkadotWallet()">
-                            <span class="wallet-icon">⚫</span>
-                            <span>Polkadot.js</span>
-                        </div>
-                        <div class="wallet-option polkadot" onclick="connectPolkadotWallet('talisman')">
-                            <span class="wallet-icon">🔮</span>
-                            <span>Talisman</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="wallet-info" id="walletInfo" style="display: none;">
-                    <div><strong>Connected:</strong> <span id="walletType"></span></div>
-                    <div class="wallet-address" id="walletAddress"></div>
-                    <button class="disconnect-btn" onclick="disconnectWallet()">Disconnect</button>
+            <h1>🔒 WebWatcher</h1>
+            <p>Cybersecurity Agent for Web2 and Web3</p>
+            <div style="margin-top: 15px; padding: 12px; background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 6px; text-align: center;">
+                <div style="color: #00ff88; font-size: 0.95em; font-family: 'Courier New', monospace;">
+                    <strong>✓ MCP and A2A enabled</strong> | <span style="color: #8a98a8;">x402 coming soon</span>
                 </div>
             </div>
         </div>
         <div class="content">
             <div class="chat-section">
-                <h2>💬 Chat with NetWatch</h2>
-                <div style="margin-bottom: 15px; padding: 12px; background: rgba(0, 255, 255, 0.05); border-radius: 6px; border-left: 2px solid rgba(0, 255, 255, 0.3);">
-                    <div style="font-size: 0.9em; color: #00d4ff;">
-                        <strong>💡 Quick Actions:</strong>
-                        <div style="margin-top: 8px; display: flex; flex-wrap: wrap; gap: 8px;">
-                            <button onclick="sendQuickMessage('Get security summary')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Get Security Summary</button>
-                            <button onclick="sendQuickMessage('Monitor wallet balance')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Check Balance</button>
-                            <button onclick="sendQuickMessage('Analyze address 0x...')" style="padding: 6px 12px; background: rgba(0, 255, 255, 0.1); border: 1px solid rgba(0, 255, 255, 0.3); color: #00ffff; border-radius: 4px; cursor: pointer; font-size: 0.85em; font-family: 'Courier New', monospace;">Analyze Address</button>
-                        </div>
-                    </div>
-                </div>
+                <h2>💬 Chat with WebWatcher</h2>
                 <div class="chat-messages" id="chatMessages">
                     <div class="message agent">
-                        <div class="message-label">🔒 NetWatch Agent</div>
-                        <div>Welcome! I'm NetWatch, your cybersecurity agent. I can help you:</div>
+                        <div class="message-label">🔒 WebWatcher Agent</div>
+                        <div>Welcome! I'm WebWatcher, your cybersecurity agent. I can help you:</div>
                         <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
                             <li>🔍 Analyze blockchain transactions for suspicious patterns</li>
                             <li>🛡️ Check address security and risk assessment</li>
@@ -933,434 +1202,22 @@ app.get("/", (req, res) => {
                     <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses..." onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
                     <button type="button" onclick="sendMessage()" id="sendButton" style="cursor: pointer;">Send</button>
                 </div>
-                <div style="margin-top: 10px; text-align: center; font-size: 0.85em; color: #8a98a8; font-family: 'Courier New', monospace;">
-                    <span id="agentStatus">Agent Status: Checking...</span>
-                </div>
-            </div>
-            <div class="analytics-section">
-                <h2>📊 Security Analytics</h2>
-                <div id="analyticsContent">
-                    <div class="loading">Loading analytics...</div>
-                </div>
-                <button onclick="refreshAnalytics()" style="width: 100%; padding: 10px; margin-top: 10px; background: rgba(0, 255, 255, 0.1); color: #00ffff; border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 4px; cursor: pointer; font-family: 'Courier New', monospace; text-transform: uppercase; letter-spacing: 1px; font-weight: bold;">Refresh Analytics</button>
             </div>
         </div>
     </div>
 
-    <script src="https://cdn.ethers.io/lib/ethers-5.7.2.umd.min.js"></script>
     <script>
         let threadId = 'web-' + Date.now();
-        let selectedLevels = [];
-        let connectedWallet = null;
-        let walletProvider = null;
-        
-        // Wallet connection functions
-        function toggleWalletMenu() {
-            const menu = document.getElementById('walletMenu');
-            const btn = document.getElementById('connectWalletBtn');
-            
-            if (connectedWallet) {
-                // If connected, show disconnect option or do nothing
-                return;
-            }
-            
-            // Toggle menu visibility
-            if (menu.classList.contains('show')) {
-                menu.classList.remove('show');
-            } else {
-                menu.classList.add('show');
-                // Focus first option for keyboard navigation
-                setTimeout(() => {
-                    const firstOption = menu.querySelector('.wallet-option');
-                    if (firstOption) firstOption.focus();
-                }, 100);
-            }
-        }
-        
-        // Close wallet menu when clicking outside
-        document.addEventListener('click', function(event) {
-            const menu = document.getElementById('walletMenu');
-            const btn = document.getElementById('connectWalletBtn');
-            if (menu && btn && !menu.contains(event.target) && !btn.contains(event.target)) {
-                menu.classList.remove('show');
-            }
-        });
-        
-        // Close menu on Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                const menu = document.getElementById('walletMenu');
-                if (menu) menu.classList.remove('show');
-            }
-        });
-        
-        async function connectEVMWallet(type) {
-            document.getElementById('walletMenu').classList.remove('show');
-            
-            try {
-                let provider;
-                let walletName;
-                
-                // Check for MetaMask
-                if (type === 'metamask') {
-                    if (typeof window.ethereum === 'undefined') {
-                        alert('MetaMask not detected. Please install MetaMask extension from https://metamask.io');
-                        window.open('https://metamask.io/download/', '_blank');
-                        return;
-                    }
-                    // Detect MetaMask specifically
-                    if (window.ethereum.isMetaMask) {
-                        walletName = 'MetaMask';
-                    } else {
-                        walletName = 'EVM Wallet';
-                    }
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
-                    
-                    // Request account access - this will trigger MetaMask popup
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                } 
-                // Check for Coinbase Wallet
-                else if (type === 'coinbase') {
-                    if (typeof window.ethereum === 'undefined') {
-                        alert('Coinbase Wallet not detected. Please install Coinbase Wallet extension.');
-                        window.open('https://www.coinbase.com/wallet', '_blank');
-                        return;
-                    }
-                    // Coinbase Wallet detection
-                    if (window.ethereum.isCoinbaseWallet) {
-                        walletName = 'Coinbase Wallet';
-                    } else if (window.ethereum.providers) {
-                        // Coinbase Wallet might be in providers array
-                        const coinbaseProvider = window.ethereum.providers.find(p => p.isCoinbaseWallet);
-                        if (coinbaseProvider) {
-                            provider = new ethers.providers.Web3Provider(coinbaseProvider);
-                            walletName = 'Coinbase Wallet';
-                            await coinbaseProvider.request({ method: 'eth_requestAccounts' });
-                        } else {
-                            alert('Coinbase Wallet not found. Please install Coinbase Wallet extension.');
-                            return;
-                        }
-                    } else {
-                        alert('Coinbase Wallet not detected. Please install Coinbase Wallet extension.');
-                        return;
-                    }
-                    if (!provider) {
-                        provider = new ethers.providers.Web3Provider(window.ethereum);
-                        await window.ethereum.request({ method: 'eth_requestAccounts' });
-                    }
-                } 
-                // Generic injected wallet
-                else if (type === 'injected') {
-                    if (typeof window.ethereum === 'undefined') {
-                        alert('No EVM wallet detected. Please install MetaMask, Coinbase Wallet, or another EVM-compatible wallet.');
-                        return;
-                    }
-                    // Try to detect wallet type
-                    if (window.ethereum.isMetaMask) {
-                        walletName = 'MetaMask';
-                    } else if (window.ethereum.isCoinbaseWallet) {
-                        walletName = 'Coinbase Wallet';
-                    } else if (window.ethereum.isBraveWallet) {
-                        walletName = 'Brave Wallet';
-                    } else {
-                        walletName = 'EVM Wallet';
-                    }
-                    provider = new ethers.providers.Web3Provider(window.ethereum);
-                    await window.ethereum.request({ method: 'eth_requestAccounts' });
-                } 
-                // WalletConnect (placeholder)
-                else if (type === 'walletconnect') {
-                    alert('WalletConnect integration coming soon! For now, please use MetaMask or another injected wallet.');
-                    return;
-                }
-                
-                if (!provider) {
-                    throw new Error('Failed to initialize wallet provider');
-                }
-                
-                const signer = provider.getSigner();
-                const address = await signer.getAddress();
-                const network = await provider.getNetwork();
-                
-                connectedWallet = {
-                    type: 'EVM',
-                    name: walletName,
-                    address: address,
-                    network: network.name,
-                    chainId: network.chainId.toString()
-                };
-                
-                walletProvider = provider;
-                updateWalletUI();
-                
-                // Send wallet info to backend
-                try {
-                    const response = await fetch('/api/wallet/connect', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'EVM',
-                            address: address,
-                            network: network.name,
-                            chainId: network.chainId.toString(),
-                            name: walletName
-                        })
-                    });
-                    const result = await response.json();
-                    console.log('Wallet connection confirmed:', result);
-                } catch (error) {
-                    console.warn('Failed to send wallet info to backend:', error);
-                }
-                
-                addMessage('agent', \`✅ Connected to \${walletName}: \${address.substring(0, 6)}...\${address.substring(38)}\`);
-            } catch (error) {
-                console.error('Error connecting EVM wallet:', error);
-                if (error.code === 4001) {
-                    alert('Connection rejected. Please approve the connection request in your wallet.');
-                } else {
-                    alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
-                }
-            }
-        }
-        
-        async function connectPolkadotWallet(type = 'polkadot') {
-            document.getElementById('walletMenu').classList.remove('show');
-            
-            try {
-                // Wait a bit for extension to be available
-                await new Promise(resolve => setTimeout(resolve, 100));
-                
-                // Check if Polkadot extension is available
-                if (typeof window.injectedWeb3 === 'undefined') {
-                    alert('Polkadot wallet extension not detected.\\n\\nPlease install:\\n• Polkadot.js: https://polkadot.js.org/extension/\\n• Talisman: https://talisman.xyz/');
-                    return;
-                }
-                
-                let extension;
-                let walletName;
-                
-                // Try Talisman first if requested
-                if (type === 'talisman') {
-                    if (window.injectedWeb3['talisman']) {
-                        extension = window.injectedWeb3['talisman'];
-                        walletName = 'Talisman';
-                    } else {
-                        alert('Talisman wallet not found. Please install Talisman extension from https://talisman.xyz/');
-                        window.open('https://talisman.xyz/', '_blank');
-                        return;
-                    }
-                } 
-                // Try Polkadot.js
-                else if (window.injectedWeb3['polkadot-js']) {
-                    extension = window.injectedWeb3['polkadot-js'];
-                    walletName = 'Polkadot.js';
-                } 
-                // Try Talisman as fallback
-                else if (window.injectedWeb3['talisman']) {
-                    extension = window.injectedWeb3['talisman'];
-                    walletName = 'Talisman';
-                } 
-                // Try any available extension
-                else {
-                    const available = Object.keys(window.injectedWeb3);
-                    if (available.length === 0) {
-                        alert('No Polkadot wallet extension found.\\n\\nPlease install:\\n• Polkadot.js: https://polkadot.js.org/extension/\\n• Talisman: https://talisman.xyz/');
-                        return;
-                    }
-                    extension = window.injectedWeb3[available[0]];
-                    walletName = available[0].charAt(0).toUpperCase() + available[0].slice(1);
-                }
-                
-                // Enable extension - this will trigger wallet popup
-                const injector = await extension.enable('NetWatch');
-                
-                // Get accounts - wallet popup should have appeared
-                const accounts = await injector.accounts.get();
-                
-                if (accounts.length === 0) {
-                    alert('No accounts found. Please create an account in your ' + walletName + ' wallet.');
-                    return;
-                }
-                
-                // Use first account (in production, you might want to let user select)
-                const account = accounts[0];
-                
-                connectedWallet = {
-                    type: 'Polkadot',
-                    name: walletName,
-                    address: account.address,
-                    accountName: account.name || 'Unnamed'
-                };
-                
-                updateWalletUI();
-                
-                // Send wallet info to backend
-                try {
-                    const response = await fetch('/api/wallet/connect', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({
-                            type: 'Polkadot',
-                            address: account.address,
-                            name: account.name || 'Unnamed',
-                            walletName: walletName
-                        })
-                    });
-                    const result = await response.json();
-                    console.log('Wallet connection confirmed:', result);
-                } catch (error) {
-                    console.warn('Failed to send wallet info to backend:', error);
-                }
-                
-                addMessage('agent', \`✅ Connected to \${walletName}: \${account.address.substring(0, 6)}...\${account.address.substring(account.address.length - 6)}\`);
-            } catch (error) {
-                console.error('Error connecting Polkadot wallet:', error);
-                if (error.message && error.message.includes('Rejected')) {
-                    alert('Connection rejected. Please approve the connection request in your wallet.');
-                } else {
-                    alert('Failed to connect wallet: ' + (error.message || 'Unknown error'));
-                }
-            }
-        }
-        
-        function updateWalletUI() {
-            const btn = document.getElementById('connectWalletBtn');
-            const info = document.getElementById('walletInfo');
-            const typeSpan = document.getElementById('walletType');
-            const addressSpan = document.getElementById('walletAddress');
-            
-            if (connectedWallet) {
-                btn.textContent = '🔗 Wallet Connected';
-                btn.style.background = 'rgba(0, 255, 136, 0.15)';
-                btn.style.borderColor = 'rgba(0, 255, 136, 0.4)';
-                btn.style.color = '#00ff88';
-                btn.style.cursor = 'default';
-                info.style.display = 'block';
-                typeSpan.textContent = \`\${connectedWallet.name} (\${connectedWallet.type})\`;
-                addressSpan.textContent = connectedWallet.address;
-                addressSpan.style.fontFamily = "'Courier New', monospace";
-                addressSpan.style.wordBreak = 'break-all';
-            } else {
-                btn.textContent = '🔗 Connect Wallet';
-                btn.style.background = 'rgba(0, 255, 255, 0.1)';
-                btn.style.borderColor = 'rgba(0, 255, 255, 0.3)';
-                btn.style.color = '#00ffff';
-                btn.style.cursor = 'pointer';
-                info.style.display = 'none';
-            }
-        }
-        
-        function disconnectWallet() {
-            connectedWallet = null;
-            walletProvider = null;
-            updateWalletUI();
-            addMessage('agent', 'Wallet disconnected');
-        }
-        
-        // Listen for account changes (EVM)
-        if (typeof window.ethereum !== 'undefined') {
-            window.ethereum.on('accountsChanged', function(accounts) {
-                if (accounts.length === 0 && connectedWallet?.type === 'EVM') {
-                    disconnectWallet();
-                } else if (connectedWallet?.type === 'EVM') {
-                    connectEVMWallet('injected');
-                }
-            });
-            
-            window.ethereum.on('chainChanged', function(chainId) {
-                if (connectedWallet?.type === 'EVM') {
-                    connectEVMWallet('injected');
-                }
-            });
-        }
 
         async function checkStatus() {
+            // Status check removed per user request
             try {
                 const response = await fetch('/health');
                 const data = await response.json();
-                // Status indicator removed per user request
-                
-                // Update level checkboxes - support multiple selections
-                if (data.currentLevel) {
-                    // For now, just update the info - multiple selections handled by updateLevels()
-                    const levelInfo = document.getElementById('levelInfo');
-                    if (levelInfo && data.capabilities) {
-                        const selectedLevels = Array.from(document.querySelectorAll('input[name="level"]:checked')).map(cb => cb.value);
-                        if (selectedLevels.length > 0) {
-                            levelInfo.innerHTML = \`<strong>Selected:</strong> \${selectedLevels.map(l => l.replace('level_', '').replace('_', ' ').toUpperCase()).join(', ')}\`;
-                        } else {
-                            levelInfo.innerHTML = \`<strong>\${data.currentLevel.replace('level_', '').replace('_', ' ').toUpperCase()}</strong>: \${data.capabilities.description}\`;
-                        }
-                    }
-                }
-                
-                // Update chat section status
-                const agentStatus = document.getElementById('agentStatus');
-                if (agentStatus) {
-                    if (data.agentInitialized) {
-                        agentStatus.innerHTML = '<span style="color: #00ff88;">✓ Agent Online - Ready to chat</span>';
-                    } else {
-                        agentStatus.innerHTML = '<span style="color: #ffaa44;">⚠ Agent Initializing... (Check API keys in .env)</span>';
-                    }
-                }
+                // Status display removed
             } catch (error) {
-                // Status indicator removed per user request
-                const agentStatus = document.getElementById('agentStatus');
-                if (agentStatus) {
-                    agentStatus.innerHTML = '<span style="color: #ff4444;">✗ Connection Error</span>';
-                }
+                // Status display removed
             }
-        }
-
-        let selectedLevels = [];
-        
-        async function updateLevels() {
-            const checkedBoxes = document.querySelectorAll('input[name="level"]:checked');
-            selectedLevels = Array.from(checkedBoxes).map(cb => cb.value);
-            
-            // Update level info display
-            const levelInfo = document.getElementById('levelInfo');
-            if (levelInfo) {
-                if (selectedLevels.length > 0) {
-                    levelInfo.innerHTML = \`<strong>Selected:</strong> \${selectedLevels.map(l => l.replace('level_', '').replace('_', ' ').toUpperCase()).join(', ')}\`;
-                } else {
-                    levelInfo.innerHTML = '<strong>No levels selected</strong>';
-                }
-            }
-            
-            // Switch to first selected level (backend supports single level)
-            if (selectedLevels.length > 0) {
-                try {
-                    const response = await fetch('/api/level', {
-                        method: 'POST',
-                        headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ level: selectedLevels[0] })
-                    });
-                    
-                    const data = await response.json();
-                    if (data.success) {
-                        addMessage('agent', \`✅ Level switched to \${data.level}. Capabilities: \${data.capabilities.description}\`);
-                        checkStatus(); // Refresh status
-                    } else {
-                        console.error('Failed to switch level:', data.error);
-                    }
-                } catch (error) {
-                    console.error('Error switching level:', error);
-                }
-            }
-            
-            console.log('Selected levels:', selectedLevels);
-        }
-        
-        async function switchLevel() {
-            // Legacy function - kept for compatibility
-            // Use updateLevels() for checkbox-based multiple selection
-            updateLevels();
-        }
-
-        function sendQuickMessage(message) {
-            document.getElementById('messageInput').value = message;
-            sendMessage();
         }
 
         async function sendMessage() {
@@ -1427,7 +1284,7 @@ app.get("/", (req, res) => {
             const messagesDiv = document.getElementById('chatMessages');
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message ' + type;
-            messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'NetWatch Agent') + '</div><div>' + formatMessage(content) + '</div>';
+            messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'WebWatcher Agent') + '</div><div>' + formatMessage(content) + '</div>';
             messagesDiv.appendChild(messageDiv);
             messagesDiv.scrollTop = messagesDiv.scrollHeight;
         }
@@ -1509,16 +1366,12 @@ app.get("/", (req, res) => {
     
     <footer style="background: rgba(0, 255, 255, 0.05); border-top: 1px solid rgba(0, 255, 255, 0.15); color: #8a98a8; padding: 20px; text-align: center; margin-top: 30px;">
         <div style="font-size: 0.95em; line-height: 1.8; font-family: 'Courier New', monospace;">
-            <div style="margin-bottom: 8px;">
-                Built with <span style="color: #00ffff;">⚡</span> 
-                <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">AgentKit</a>
-                and <span style="color: #00ffff;">🔒</span>
-                <a href="https://github.com/yourusername/netwatch-agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">NetWatch</a>
-            </div>
-            <div style="opacity: 0.85; font-size: 0.9em;">
-                Made with <span style="color: #00ff88;">❤️</span> by 
-                <a href="https://github.com/edwardtay" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); font-weight: 500; transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">Edward</a>
-            </div>
+            Built with 
+            <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">AgentKit</a>
+            and 
+            <a href="https://verisense.network/" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">VeriSense</a>
+            | Made by 
+            <a href="https://github.com/edwardtay" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">Edward</a>
         </div>
     </footer>
 </body>
@@ -1529,9 +1382,10 @@ app.get("/", (req, res) => {
 // Start server
 async function startServer() {
   // Start server even if agent initialization fails
-  app.listen(PORT, () => {
-    logger.info(`🚀 NetWatch Server running on http://localhost:${PORT}`);
-    logger.info(`📊 Web Interface: http://localhost:${PORT}`);
+  // Listen on 0.0.0.0 for Cloud Run compatibility
+  app.listen(PORT, "0.0.0.0", () => {
+    logger.info(`🚀 WebWatcher Server running on port ${PORT}`);
+    logger.info(`📊 Web Interface: http://0.0.0.0:${PORT}`);
     logger.info(`🔌 API Endpoints:`);
     logger.info(`   POST /api/chat - Chat with agent`);
     logger.info(`   GET  /api/analytics - Get security analytics`);

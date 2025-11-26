@@ -12,6 +12,7 @@ import {
 import { z } from "zod";
 import { logger } from "../utils/logger";
 import { securityAnalytics } from "../utils/security-analytics";
+import { exaSearch as mcpExaSearch } from "../utils/mcp-client";
 
 export class Level3McpActionProvider extends ActionProvider<WalletProvider> {
   private mcpTools: Map<string, any> = new Map();
@@ -54,6 +55,11 @@ export class Level3McpActionProvider extends ActionProvider<WalletProvider> {
     this.mcpTools.set("check_compliance", {
       name: "check_compliance",
       description: "Check compliance status",
+      requiresAuth: false,
+    });
+    this.mcpTools.set("exa_search", {
+      name: "exa_search",
+      description: "Search the web using Exa MCP server",
       requiresAuth: false,
     });
 
@@ -350,10 +356,87 @@ export class Level3McpActionProvider extends ActionProvider<WalletProvider> {
       return `Error listing MCP tools: ${error instanceof Error ? error.message : String(error)}`;
     }
   }
+
+  /**
+   * Search the web using Exa MCP server
+   */
+  @CreateAction({
+    name: "exa_search",
+    description:
+      "Search the web using Exa MCP server. Returns relevant search results with URLs and snippets.",
+    schema: z.object({
+      query: z.string().describe("Search query string"),
+      numResults: z.number().optional().default(20).describe("Number of results to return (default: 20, max: 100)"),
+      category: z.string().optional().describe("Optional category filter"),
+    }),
+  })
+  async exaSearch(
+    walletProvider: WalletProvider,
+    args: { query: string; numResults?: number; category?: string },
+  ): Promise<string> {
+    try {
+      logger.info("Exa search request", args);
+
+      // Verify tool is whitelisted
+      const tool = this.mcpTools.get("exa_search");
+      if (!tool) {
+        throw new Error("Exa search tool not available");
+      }
+
+      // Call Exa MCP server
+      let searchResults: Array<{ title: string; url: string; text: string; snippet?: string }>;
+      
+      try {
+        const numResults = Math.min(Math.max(1, args.numResults || 20), 100); // Clamp between 1-100
+        searchResults = await mcpExaSearch(
+          args.query,
+          numResults,
+          args.category,
+        );
+      } catch (error) {
+        logger.warn("Exa MCP search failed, using fallback", error);
+        // Fallback: return mock results if MCP server is not available
+        searchResults = [
+          {
+            title: `Search Result for: ${args.query}`,
+            url: `https://example.com/search?q=${encodeURIComponent(args.query)}`,
+            text: `This is a fallback result for "${args.query}". Exa MCP server is not configured or unavailable.`,
+            snippet: `Search result snippet for "${args.query}"...`,
+          },
+        ];
+      }
+
+      // Record event
+      securityAnalytics.recordEvent({
+        type: "alert",
+        severity: "low",
+        timestamp: new Date().toISOString(),
+        data: {
+          action: "exa_search",
+          query: args.query,
+          resultsCount: searchResults.length,
+        },
+        riskScore: 0,
+      });
+
+      const numResults = Math.min(Math.max(1, args.numResults || 20), 100);
+      return JSON.stringify({
+        results: searchResults,
+        query: args.query,
+        numResults: numResults,
+      }, null, 2);
+    } catch (error) {
+      logger.error("Error performing Exa search", error);
+      return `Error performing Exa search: ${error instanceof Error ? error.message : String(error)}`;
+    }
+  }
 }
 
 /**
  * Factory function to create Level 3 action provider
  */
 export const level3McpActionProvider = () => new Level3McpActionProvider();
+
+
+
 
