@@ -5,10 +5,12 @@ const port = Number(process.env.PORT) || 8080;
 
 app.use(express.json());
 
+// Simple health endpoint
 app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
+// Root info page
 app.get("/", (_req, res) => {
   res.status(200).send("WebWatcher / VeriSense agent server is running");
 });
@@ -67,7 +69,14 @@ function urlFeatureAgent(rawUrl: string): UrlFeatures {
   const tld = domainLower.slice(domainLower.lastIndexOf("."));
   const tldSuspicious = weirdTlds.includes(tld);
 
-  const bigBrands = ["apple", "paypal", "google", "microsoft", "facebook", "binance"];
+  const bigBrands = [
+    "apple",
+    "paypal",
+    "google",
+    "microsoft",
+    "facebook",
+    "binance"
+  ];
   let brandImpersonation: string | null = null;
   for (const b of bigBrands) {
     if (domainLower.includes(b) && !domainLower.endsWith(`${b}.com`)) {
@@ -110,8 +119,12 @@ function phishingRedFlagAgent(features: UrlFeatures) {
 
   if (isIp) redFlags.push("Uses raw IP instead of normal domain name.");
   if (hasAt) redFlags.push("Contains @ which can hide the real destination.");
-  if (numDots >= 3) redFlags.push("Many dots in domain, often used to hide real site.");
-  if (urlLength > 80) redFlags.push("Very long URL, common in phishing links.");
+  if (numDots >= 3) {
+    redFlags.push("Many dots in domain, often used to hide real site.");
+  }
+  if (urlLength > 80) {
+    redFlags.push("Very long URL, common in phishing links.");
+  }
   if (keywordHits.length > 0) {
     redFlags.push("Contains sensitive words: " + keywordHits.join(", "));
   }
@@ -160,6 +173,7 @@ function phishingRedFlagAgent(features: UrlFeatures) {
   };
 }
 
+// A2A-style endpoint: URL features agent -> phishing red-flag agent
 app.post("/check", (req, res) => {
   const { url } = req.body || {};
   if (!url || typeof url !== "string") {
@@ -183,6 +197,10 @@ app.post("/check", (req, res) => {
   }
 });
 
+// AgentCard definition for Verisense / other A2A registries
+const agentBaseUrl =
+  "https://verisense-agentkit-414780218994.us-central1.run.app";
+
 const agentCard = {
   id: "webwatcher-phish-checker",
   name: "WebWatcher Phishing URL Checker",
@@ -192,14 +210,33 @@ const agentCard = {
   author: {
     name: "NetWatch Team"
   },
-  agentUrl: "https://verisense-agentkit-414780218994.us-central1.run.app",
+  // extra fields so registries can auto-fill Agent URL
+  agentUrl: agentBaseUrl,
+  baseUrl: agentBaseUrl,
   capabilities: {
     functions: [
       {
         name: "checkUrl",
         description: "Analyze a URL and return phishing red flags.",
-        inputSchema: { /* same as before */ },
-        outputSchema: { /* same as before */ }
+        inputSchema: {
+          type: "object",
+          properties: {
+            url: {
+              type: "string",
+              description: "URL to analyze for phishing indicators."
+            }
+          },
+          required: ["url"]
+        },
+        outputSchema: {
+          type: "object",
+          properties: {
+            url: { type: "string" },
+            verdict: { type: "string" },
+            redFlags: { type: "array", items: { type: "string" } },
+            explanation: { type: "string" }
+          }
+        }
       }
     ]
   },
@@ -211,6 +248,7 @@ const agentCard = {
   }
 };
 
+// Well-known endpoint for auto-discovery
 app.get("/.well-known/agent.json", (_req, res) => {
   res.json(agentCard);
 });
