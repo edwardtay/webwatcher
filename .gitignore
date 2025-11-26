@@ -12,3 +12,6 @@ dist/
 coverage/
 *.tsbuildinfo
 
+# Private folder (old code, tests, logs)
+private/
+

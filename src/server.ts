@@ -26,8 +26,6 @@ function extractTitleFromUrl(url: string): string {
 
 // Lazy import to avoid decorator metadata issues during module load
 let initializeAgent: any;
-let AnalystLevel: any;
-let levelManager: any;
 let HumanMessage: any;
 
 async function loadAgentModules() {
@@ -58,24 +56,6 @@ async function loadAgentModules() {
         throw new Error("HumanMessage not found in langchain module");
       }
       logger.info("✓ langchain module loaded");
-      
-      // Try both .js and without extension
-      let levelManagerModule;
-      try {
-        levelManagerModule = await import("./utils/level-manager.js");
-      } catch (e) {
-        try {
-          levelManagerModule = await import("./utils/level-manager");
-        } catch (e2) {
-          throw new Error(`Failed to import level-manager module: ${e instanceof Error ? e.message : String(e)}`);
-        }
-      }
-      AnalystLevel = levelManagerModule.AnalystLevel;
-      levelManager = levelManagerModule.levelManager;
-      if (!levelManager) {
-        throw new Error("levelManager not found in level-manager module");
-      }
-      logger.info("✓ level-manager module loaded");
       
       logger.info("✓ All agent modules loaded successfully");
       return true;
@@ -113,9 +93,8 @@ app.use((req, res, next) => {
 // Initialize agent (singleton)
 let agentInstance: any = null;
 let agentInitialized = false;
-let currentLevel: string = "level_3_tools"; // Default to MCP since search was removed
 
-async function getAgent(level?: string) {
+async function getAgent() {
   // Try to load modules if not already loaded
   if (!initializeAgent) {
     const loaded = await loadAgentModules();
@@ -128,37 +107,16 @@ async function getAgent(level?: string) {
     throw new Error("Agent initialization module not available");
   }
   
-  // Convert string level to AnalystLevel enum if needed
-  let levelEnum: any = undefined;
-  if (level && AnalystLevel) {
-    // Map string to enum value
-    const levelMap: Record<string, any> = {
-      "level_1_local": AnalystLevel.LEVEL_1_LOCAL,
-      "level_2_intel": AnalystLevel.LEVEL_2_INTEL,
-      "level_3_tools": AnalystLevel.LEVEL_3_TOOLS,
-      "level_4a_a2a": AnalystLevel.LEVEL_4A_A2A,
-      "level_4b_x402": AnalystLevel.LEVEL_4B_X402,
-    };
-    levelEnum = levelMap[level];
-    if (levelEnum && levelManager) {
-      currentLevel = level;
-      levelManager.setLevel(levelEnum);
-    }
-  }
-  
-  // Reinitialize if level changed or not initialized
-  if (!agentInstance || (level && level !== currentLevel)) {
+  // Initialize agent if not already initialized
+  if (!agentInstance) {
     try {
-      logger.info(`Initializing agent at level: ${currentLevel || 'default'}`);
-      // Use levelEnum if available, otherwise let initializeAgent use default
-      agentInstance = await initializeAgent(levelEnum);
+      logger.info("Initializing agent...");
+      agentInstance = await initializeAgent();
       agentInitialized = true;
-      logger.info(`Agent initialized/reinitialized at level: ${currentLevel}`);
+      logger.info("Agent initialized successfully");
     } catch (error) {
       logger.error("Failed to initialize agent", error);
       agentInitialized = false;
-      // Don't throw - allow graceful degradation
-      // The chat endpoint will handle this
       throw error;
     }
   }
@@ -171,109 +129,13 @@ async function getAgent(level?: string) {
  * Health check endpoint
  */
 app.get("/health", (req, res) => {
-  let capabilities: any = {};
-  if (levelManager) {
-    try {
-      capabilities = levelManager.getCapabilities();
-    } catch (error) {
-      capabilities = { description: "Capabilities not available" };
-    }
-  }
   res.json({
     status: "ok",
     agentInitialized,
-    currentLevel: currentLevel,
-    capabilities: capabilities.description ? {
-      description: capabilities.description,
-      networkAccess: capabilities.networkAccess,
-      webSearch: capabilities.webSearch,
-      mcpTools: capabilities.mcpTools,
-      a2aCoordination: capabilities.a2aCoordination,
-      payments: capabilities.payments,
-    } : { description: "Not available" },
     timestamp: new Date().toISOString(),
   });
 });
 
-/**
- * Get available levels
- */
-app.get("/api/levels", (req, res) => {
-  if (!AnalystLevel || !levelManager) {
-    return res.json({
-      currentLevel: currentLevel,
-      availableLevels: [],
-      error: "Level manager not available",
-    });
-  }
-  res.json({
-    currentLevel: currentLevel,
-    availableLevels: (AnalystLevel ? Object.values(AnalystLevel) : []).map((level: unknown) => {
-      const levelStr = String(level);
-      return {
-        id: levelStr,
-        name: levelStr.replace("LEVEL_", "").replace("_", " ").toUpperCase(),
-        capabilities: levelManager.getCapabilities(),
-      };
-    }),
-    allCapabilities: Object.entries(AnalystLevel).map(([key, level]) => ({
-      level,
-      capabilities: (() => {
-        const tempManager = levelManager;
-        tempManager.setLevel(level);
-        return tempManager.getCapabilities();
-      })(),
-    })),
-  });
-});
-
-/**
- * Switch level endpoint
- */
-app.post("/api/level", async (req, res) => {
-  try {
-    const { level } = req.body;
-
-    if (!level) {
-      return res.status(400).json({
-        error: "Level is required",
-      });
-    }
-
-    if (!AnalystLevel || !Object.values(AnalystLevel).includes(level)) {
-      return res.status(400).json({
-        error: "Invalid level",
-        availableLevels: AnalystLevel ? Object.values(AnalystLevel) : [],
-      });
-    }
-
-    // Reinitialize agent with new level
-    agentInstance = null;
-    await getAgent(level);
-
-    const capabilities = levelManager ? levelManager.getCapabilities() : {};
-
-    res.json({
-      success: true,
-      level: currentLevel,
-      capabilities: capabilities.description ? {
-        description: capabilities.description,
-        networkAccess: capabilities.networkAccess,
-        webSearch: capabilities.webSearch,
-        mcpTools: capabilities.mcpTools,
-        a2aCoordination: capabilities.a2aCoordination,
-        payments: capabilities.payments,
-      } : { description: "Not available" },
-      message: `Successfully switched to ${currentLevel}`,
-    });
-  } catch (error) {
-    logger.error("Error switching level", error);
-    res.status(500).json({
-      error: "Failed to switch level",
-      message: error instanceof Error ? error.message : String(error),
-    });
-  }
-});
 
 /**
  * Chat endpoint - Send a message to the agent
@@ -299,10 +161,28 @@ app.post("/api/chat", async (req, res) => {
     
     const sanitizedMessage = inputValidation.sanitized;
 
+    // Check if this is a website scan request
+    const websiteScanPattern = /scan\s+(?:website|site|url|link)?\s+(https?:\/\/[^\s]+|[a-zA-Z0-9][a-zA-Z0-9-]*[a-zA-Z0-9]*\.[a-zA-Z]{2,})/i;
+    const websiteScanMatch = sanitizedMessage.match(websiteScanPattern);
+    let websiteToScan: string | null = null;
+    if (websiteScanMatch) {
+      websiteToScan = websiteScanMatch[1];
+      logger.info(`Detected website scan request: ${websiteToScan}`);
+    }
+
     // Check if this is a search query and try Exa search directly
-    const searchKeywords = ["search", "find", "look up", "cve", "vulnerability", "what is", "tell me about"];
-    const isSearchQuery = searchKeywords.some(keyword => 
-      sanitizedMessage.toLowerCase().includes(keyword)
+    // Enhanced detection for better search query recognition
+    const searchKeywords = [
+      "search", "find", "look for", "show me", "what is", "tell me about",
+      "cve", "vulnerability", "exploit", "threat", "security", "breach",
+      "attack", "malware", "ransomware", "phishing", "zero-day",
+      "patch", "update", "advisory", "alert", "incident"
+    ];
+    const isSearchQuery = !websiteToScan && sanitizedMessage.length > 3 && (
+      searchKeywords.some(keyword => sanitizedMessage.toLowerCase().includes(keyword)) ||
+      sanitizedMessage.match(/^\d{4}/) || // Year queries like "2025"
+      sanitizedMessage.match(/cve-\d{4}-\d+/i) || // CVE IDs
+      sanitizedMessage.split(' ').length <= 5 // Short queries are likely searches
     );
     
     let exaSearchResults: Array<{ title: string; url: string; text: string; snippet?: string; source?: string }> = [];
@@ -359,6 +239,13 @@ app.post("/api/chat", async (req, res) => {
       }
     }
     
+    // If website scan detected, enhance the message to trigger scan_website action
+    let messageToSend = sanitizedMessage;
+    if (websiteToScan) {
+      messageToSend = `Scan website ${websiteToScan} for phishing and security risks`;
+      logger.info(`Enhanced message for website scan: ${messageToSend}`);
+    }
+    
     const configWithThread = {
       ...config,
       configurable: {
@@ -368,24 +255,30 @@ app.post("/api/chat", async (req, res) => {
     };
 
     const stream = await agent.stream(
-      { messages: [new HumanMessage(sanitizedMessage)] },
+      { messages: [new HumanMessage(messageToSend)] },
       configWithThread,
     );
 
     let fullResponse = "";
     const chunks: string[] = [];
     let agentExaResults: Array<{ title: string; url: string; text: string; snippet?: string }> = [];
+    let agentProvidedContext = false;
 
     for await (const chunk of stream) {
       if ("agent" in chunk) {
         const content = chunk.agent.messages[0].content;
         fullResponse += content;
         chunks.push(content);
+        // Check if agent provided meaningful context (not just "searching" or "let me")
+        if (content.length > 50 && !content.toLowerCase().includes("let me search") && 
+            !content.toLowerCase().includes("searching for")) {
+          agentProvidedContext = true;
+        }
       } else if ("tools" in chunk) {
         const toolContent = chunk.tools.messages[0].content;
         logger.debug("Tool execution:", toolContent);
         
-        // Check if this is an Exa search result
+        // Check if this is an Exa search result or website scan result
         try {
           // Try to parse JSON from tool response
           const jsonMatch = toolContent.match(/\{[\s\S]*\}/);
@@ -395,6 +288,12 @@ app.post("/api/chat", async (req, res) => {
               // This looks like Exa search results
               agentExaResults = parsed.results;
               logger.info(`Exa search executed: "${parsed.query}" returned ${parsed.results.length} results`);
+            } else if (parsed.a2aFlow && parsed.website) {
+              // This is a website scan result with A2A flow - prepend A2A flow to response
+              logger.info(`[A2A] Website scan completed for ${parsed.website}`);
+              if (!fullResponse.includes("A2A Agent Coordination")) {
+                fullResponse = parsed.a2aFlow + "\n\n" + fullResponse;
+              }
             }
           }
         } catch (e) {
@@ -406,14 +305,39 @@ app.post("/api/chat", async (req, res) => {
     // Use agent results if available, otherwise use direct Exa search results
     const finalExaResults = agentExaResults.length > 0 ? agentExaResults : exaSearchResults;
     
+    // If agent didn't provide context and we have search results, add a helpful intro
+    if (!agentProvidedContext && exaSearchResults.length > 0 && fullResponse.length < 100) {
+      const queryContext = sanitizedMessage.toLowerCase();
+      let intro = "";
+      
+      if (queryContext.includes("cve")) {
+        intro = `I found several CVE entries related to your query. Here are the most relevant results:\n\n`;
+      } else if (queryContext.includes("vulnerability") || queryContext.includes("exploit")) {
+        intro = `Here are the latest security vulnerabilities and exploits I found:\n\n`;
+      } else if (queryContext.match(/^\d{4}/)) {
+        intro = `I found security-related information for ${sanitizedMessage}. Here are the results:\n\n`;
+      } else {
+        intro = `Based on your query, here are the most relevant results I found:\n\n`;
+      }
+      
+      fullResponse = intro + fullResponse;
+    }
+    
     // Enhance response with Exa results if available
     let enhancedResponse = fullResponse;
     if (finalExaResults.length > 0) {
-      // Add search results to response with better formatting
-      if (!fullResponse.includes("**Search Results:**")) {
-        enhancedResponse += "\n\n**Search Results:**\n\n";
+      // Add a helpful summary if agent didn't provide one
+      if (!fullResponse.toLowerCase().includes("found") && !fullResponse.toLowerCase().includes("result")) {
+        enhancedResponse += `\n\nI found ${finalExaResults.length} relevant result${finalExaResults.length > 1 ? 's' : ''} for your query.`;
       }
-      finalExaResults.slice(0, 5).forEach((result, idx) => {
+      
+      // Add search results with better formatting
+      if (!fullResponse.includes("**Search Results:**") && !fullResponse.includes("**Results:**")) {
+        enhancedResponse += "\n\n**📋 Search Results:**\n\n";
+      }
+      
+      // Group and format results with better context
+      finalExaResults.slice(0, 8).forEach((result, idx) => {
         const title = result.title && result.title !== "Untitled" && result.title !== "Search Result" 
           ? result.title 
           : result.url 
@@ -421,21 +345,53 @@ app.post("/api/chat", async (req, res) => {
             : `Result ${idx + 1}`;
         const url = result.url || "";
         const source = (result as any).source || "Unknown";
-        const sourceBadge = source === "MCP" ? "🔌 MCP" : source === "API" ? "🌐 API" : "";
         
-        if (url) {
-          enhancedResponse += `${idx + 1}. **[${title}](${url})** ${sourceBadge ? `*(${sourceBadge})*` : ""}\n`;
-        } else {
-          enhancedResponse += `${idx + 1}. **${title}** ${sourceBadge ? `*(${sourceBadge})*` : ""}\n`;
+        // Extract domain for context
+        let domain = "";
+        try {
+          if (url) {
+            const urlObj = new URL(url);
+            domain = urlObj.hostname.replace(/^www\./, '');
+          }
+        } catch (e) {
+          // Invalid URL, skip domain
         }
         
+        // Format snippet better
+        let snippet = "";
         if (result.snippet && result.snippet.trim()) {
-          enhancedResponse += `   ${result.snippet.trim()}\n`;
+          snippet = result.snippet.trim();
         } else if (result.text && result.text.trim()) {
-          enhancedResponse += `   ${result.text.trim().substring(0, 200)}${result.text.length > 200 ? '...' : ''}\n`;
+          snippet = result.text.trim();
         }
-        enhancedResponse += "\n";
+        
+        // Clean up snippet
+        if (snippet) {
+          // Remove excessive whitespace
+          snippet = snippet.replace(/\s+/g, ' ').trim();
+          // Limit length but keep it meaningful
+          if (snippet.length > 250) {
+            const lastSpace = snippet.substring(0, 250).lastIndexOf(' ');
+            snippet = snippet.substring(0, lastSpace > 0 ? lastSpace : 250) + '...';
+          }
+        }
+        
+        // Build formatted result with clickable links
+        if (url) {
+          // Use markdown link format: [title](url)
+          enhancedResponse += `**${idx + 1}. [${title}](${url})**\n`;
+        } else {
+          enhancedResponse += `**${idx + 1}. ${title}**\n`;
+        }
+        if (domain) {
+          enhancedResponse += `📍 Source: ${domain}\n`;
+        }
+        if (snippet) {
+          enhancedResponse += `\n${snippet}\n`;
+        }
+        enhancedResponse += "\n---\n\n";
       });
+      
     }
 
     res.json({
@@ -940,50 +896,210 @@ app.get("/", (req, res) => {
             padding: 0;
             box-sizing: border-box;
         }
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+        }
         body {
-            font-family: 'Courier New', 'Monaco', 'Menlo', 'Consolas', monospace;
-            background: #0a0e1a;
-            background-image: 
-                radial-gradient(circle at 20% 50%, rgba(0, 255, 255, 0.03) 0%, transparent 50%),
-                radial-gradient(circle at 80% 80%, rgba(0, 255, 200, 0.03) 0%, transparent 50%);
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
+            background: #0d1117;
             min-height: 100vh;
-            padding: 20px;
-            color: #a0a8b8;
+            display: flex;
+            flex-direction: column;
+            padding: 0;
+            color: #c9d1d9;
         }
         .container {
-            max-width: 1200px;
+            max-width: 1000px;
+            width: 100%;
             margin: 0 auto;
-            background: #0f1419;
-            border: 1px solid rgba(0, 255, 255, 0.15);
-            border-radius: 8px;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4), 0 0 0 1px rgba(0, 255, 255, 0.05);
+            background: #161b22;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
             overflow: hidden;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            margin-top: 20px;
+            margin-bottom: 20px;
+            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
         }
         .header {
-            background: linear-gradient(135deg, rgba(0, 255, 255, 0.1) 0%, rgba(0, 200, 255, 0.08) 100%);
-            border-bottom: 1px solid rgba(0, 255, 255, 0.2);
-            color: #e0e8f0;
-            padding: 30px;
+            background: #161b22;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            color: #f0f6fc;
+            padding: 32px 40px;
             text-align: center;
-            box-shadow: inset 0 -1px 0 rgba(0, 255, 255, 0.1);
+        }
+        .header {
+            position: relative;
+        }
+        .header-content {
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 12px;
         }
         .header h1 {
-            font-size: 2.5em;
-            margin-bottom: 10px;
+            font-size: 2em;
+            margin-bottom: 8px;
+            font-weight: 600;
+            letter-spacing: -0.5px;
         }
         .header p {
-            opacity: 0.9;
-            font-size: 1.1em;
+            opacity: 0.7;
+            font-size: 0.95em;
+            font-weight: 400;
+        }
+        .info-icon {
+            position: absolute;
+            top: 32px;
+            right: 40px;
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255, 255, 255, 0.08);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #c9d1d9;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 18px;
+            font-weight: 600;
+            transition: all 0.2s ease;
+        }
+        .info-icon:hover {
+            background: rgba(255, 255, 255, 0.12);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #f0f6fc;
+            transform: scale(1.05);
+        }
+        .modal-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.7);
+            backdrop-filter: blur(4px);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        .modal-overlay.active {
+            display: flex;
+        }
+        .modal {
+            background: #161b22;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 12px;
+            max-width: 600px;
+            width: 90%;
+            max-height: 80vh;
+            overflow-y: auto;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            animation: modalSlideIn 0.3s ease;
+        }
+        @keyframes modalSlideIn {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+        .modal-header {
+            padding: 24px 32px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .modal-header h2 {
+            margin: 0;
+            font-size: 1.5em;
+            font-weight: 600;
+            color: #f0f6fc;
+        }
+        .modal-close {
+            width: 32px;
+            height: 32px;
+            border-radius: 6px;
+            background: transparent;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            color: #c9d1d9;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 20px;
+            transition: all 0.2s ease;
+        }
+        .modal-close:hover {
+            background: rgba(255, 255, 255, 0.08);
+            border-color: rgba(255, 255, 255, 0.2);
+            color: #f0f6fc;
+        }
+        .modal-body {
+            padding: 32px;
+            color: #c9d1d9;
+            line-height: 1.6;
+        }
+        .modal-body h3 {
+            color: #f0f6fc;
+            font-size: 1.2em;
+            margin-top: 24px;
+            margin-bottom: 12px;
+            font-weight: 600;
+        }
+        .modal-body h3:first-child {
+            margin-top: 0;
+        }
+        .modal-body p {
+            margin-bottom: 16px;
+            font-size: 0.95em;
+        }
+        .modal-body ul {
+            margin-left: 20px;
+            margin-bottom: 16px;
+        }
+        .modal-body li {
+            margin-bottom: 8px;
+            font-size: 0.95em;
+        }
+        .modal-body code {
+            background: rgba(255, 255, 255, 0.05);
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #58a6ff;
         }
         .content {
-            padding: 30px;
+            padding: 32px 40px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
         }
         .chat-section {
-            background: #f8f9fa;
-            border-radius: 8px;
-            padding: 20px;
-            border: 2px solid #667eea;
-            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.1);
+            background: transparent;
+            border-radius: 0;
+            padding: 0;
+            border: none;
+            box-shadow: none;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+            height: 100%;
         }
         .analytics-section {
             background: #f8f9fa;
@@ -996,20 +1112,26 @@ app.get("/", (req, res) => {
             font-size: 1.5em;
         }
         .chat-section h2 {
-            color: #667eea;
+            color: #f0f6fc;
             display: flex;
             align-items: center;
             gap: 10px;
+            font-size: 1.25em;
+            font-weight: 500;
+            margin-bottom: 24px;
+            flex-shrink: 0;
         }
         .chat-messages {
-            background: white;
+            background: #0d1117;
             border-radius: 8px;
-            padding: 15px;
-            height: 500px;
+            padding: 24px;
+            flex: 1 1 auto;
             overflow-y: auto;
-            margin-bottom: 15px;
-            border: 1px solid #e0e0e0;
-            box-shadow: inset 0 2px 4px rgba(0,0,0,0.05);
+            overflow-x: hidden;
+            margin-bottom: 20px;
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            min-height: 0;
+            max-height: none;
         }
         .chat-messages::-webkit-scrollbar {
             width: 8px;
@@ -1026,77 +1148,142 @@ app.get("/", (req, res) => {
             background: rgba(0, 255, 255, 0.5);
         }
         .message {
-            margin-bottom: 15px;
-            padding: 10px;
-            border-radius: 6px;
+            margin-bottom: 20px;
+            padding: 16px 20px;
+            border-radius: 8px;
         }
         .message.user {
-            background: #e3f2fd;
+            background: rgba(56, 139, 253, 0.1);
             text-align: right;
+            border: 1px solid rgba(56, 139, 253, 0.2);
         }
         .message.agent {
-            background: #f1f8e9;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid rgba(255, 255, 255, 0.08);
         }
         .message-label {
-            font-weight: bold;
-            font-size: 0.9em;
-            margin-bottom: 5px;
-            color: #666;
+            font-weight: 600;
+            font-size: 0.85em;
+            margin-bottom: 8px;
+            color: #8b949e;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
         }
         .chat-input {
             display: flex;
+            flex-direction: column;
             gap: 10px;
+            flex-shrink: 0;
+        }
+        .chat-input-row {
+            display: flex;
+            gap: 10px;
+            width: 100%;
             align-items: center;
+            flex-shrink: 0;
         }
         .chat-input input {
             flex: 1;
-            padding: 14px 16px;
-            background: #0a0e14;
-            border: 1px solid rgba(0, 255, 255, 0.2);
-            border-radius: 4px;
-            font-size: 1em;
-            color: #e0e8f0;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s;
+            padding: 16px 20px;
+            background: #0d1117;
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            border-radius: 8px;
+            font-size: 0.95em;
+            color: #f0f6fc;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            transition: all 0.2s ease;
+            width: 100%;
+            min-width: 0;
         }
         .chat-input input:focus {
             outline: none;
-            border-color: rgba(0, 255, 255, 0.4);
-            box-shadow: 0 0 0 2px rgba(0, 255, 255, 0.1), 0 0 10px rgba(0, 255, 255, 0.1);
-            background: #0f1419;
+            border-color: rgba(56, 139, 253, 0.5);
+            background: #161b22;
+            box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.1);
         }
         .chat-input input::placeholder {
-            color: #5a6678;
+            color: #6e7681;
         }
         .chat-input button {
-            padding: 14px 28px;
-            background: rgba(0, 255, 255, 0.1);
-            color: #00ffff;
-            border: 1px solid rgba(0, 255, 255, 0.3);
-            border-radius: 4px;
+            padding: 16px 20px;
+            background: #238636;
+            color: #ffffff;
+            border: 1px solid #238636;
+            border-radius: 8px;
             cursor: pointer;
-            font-size: 1em;
-            font-weight: bold;
-            font-family: 'Courier New', monospace;
-            transition: all 0.3s;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            box-shadow: 0 2px 8px rgba(0, 255, 255, 0.1);
+            font-size: 1.2em;
+            font-weight: 600;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+            transition: all 0.2s ease;
+            min-width: 60px;
+            box-shadow: 0 1px 3px rgba(35, 134, 54, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
         }
         .chat-input button:hover:not(:disabled) {
-            background: rgba(0, 255, 255, 0.15);
-            border-color: rgba(0, 255, 255, 0.5);
-            box-shadow: 0 0 15px rgba(0, 255, 255, 0.2), 0 2px 8px rgba(0, 255, 255, 0.15);
+            background: #2ea043;
+            border-color: #2ea043;
+            box-shadow: 0 2px 6px rgba(35, 134, 54, 0.4);
             transform: translateY(-1px);
         }
         .chat-input button:active:not(:disabled) {
+            background: #238636;
+            border-color: #238636;
             transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(35, 134, 54, 0.3);
+        }
+        .mcp-suggestion-btn {
+            padding: 10px 18px;
+            background: rgba(35, 134, 54, 0.1);
+            color: #3fb950;
+            border: 1px solid rgba(35, 134, 54, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        .mcp-suggestion-btn:hover {
+            background: rgba(35, 134, 54, 0.2);
+            border-color: rgba(35, 134, 54, 0.5);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(35, 134, 54, 0.2);
+        }
+        .mcp-suggestion-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(35, 134, 54, 0.15);
         }
         .chat-input button:disabled {
-            background: #ccc;
+            background: #21262d;
+            color: #6e7681;
+            border-color: #30363d;
             cursor: not-allowed;
             transform: none;
             box-shadow: none;
+        }
+        .mcp-suggestion-btn {
+            padding: 10px 18px;
+            background: rgba(35, 134, 54, 0.1);
+            color: #3fb950;
+            border: 1px solid rgba(35, 134, 54, 0.3);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.875em;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+        }
+        .mcp-suggestion-btn:hover {
+            background: rgba(35, 134, 54, 0.2);
+            border-color: rgba(35, 134, 54, 0.5);
+            transform: translateY(-1px);
+            box-shadow: 0 2px 4px rgba(35, 134, 54, 0.2);
+        }
+        .mcp-suggestion-btn:active {
+            transform: translateY(0);
+            box-shadow: 0 1px 2px rgba(35, 134, 54, 0.15);
         }
         .analytics-card {
             background: #0a0e14;
@@ -1165,11 +1352,74 @@ app.get("/", (req, res) => {
 <body>
     <div class="container">
         <div class="header">
+            <div class="info-icon" onclick="openInfoModal()" title="About WebWatcher">ℹ</div>
             <h1>🔒 WebWatcher</h1>
             <p>Cybersecurity Agent for Web2 and Web3</p>
-            <div style="margin-top: 15px; padding: 12px; background: rgba(0, 255, 136, 0.1); border: 1px solid rgba(0, 255, 136, 0.3); border-radius: 6px; text-align: center;">
-                <div style="color: #00ff88; font-size: 0.95em; font-family: 'Courier New', monospace;">
-                    <strong>✓ MCP and A2A enabled</strong> | <span style="color: #8a98a8;">x402 coming soon</span>
+            <div style="margin-top: 16px; padding: 10px 16px; background: rgba(35, 134, 54, 0.1); border: 1px solid rgba(35, 134, 54, 0.2); border-radius: 6px; text-align: center;">
+                <div style="color: #3fb950; font-size: 0.875em; font-weight: 500;">
+                    <strong>✓ MCP and A2A enabled</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Info Modal -->
+        <div class="modal-overlay" id="infoModal" onclick="closeInfoModal(event)">
+            <div class="modal" onclick="event.stopPropagation()">
+                <div class="modal-header">
+                    <h2>About WebWatcher</h2>
+                    <button class="modal-close" onclick="closeInfoModal(event)">×</button>
+                </div>
+                <div class="modal-body">
+                    <h3>Overview</h3>
+                    <p>
+                        WebWatcher is an advanced cybersecurity agent built on <strong>VeriSense</strong> and <strong>AgentKit</strong>. 
+                        It provides comprehensive security analysis, threat detection, and monitoring capabilities for both Web2 and Web3 environments.
+                    </p>
+                    
+                    <h3>Key Features</h3>
+                    <ul>
+                        <li><strong>Website Security Scanning</strong> - Detect phishing red flags and security risks using A2A (Agent-to-Agent) coordination</li>
+                        <li><strong>CVE Vulnerability Search</strong> - Search Common Vulnerabilities and Exposures database</li>
+                        <li><strong>Blockchain Transaction Analysis</strong> - Analyze blockchain transactions for suspicious patterns and risks</li>
+                        <li><strong>Wallet Risk Scanning</strong> - Scan wallet addresses for security threats and anomalies</li>
+                        <li><strong>Security State Summaries</strong> - Get comprehensive security posture assessments</li>
+                        <li><strong>Advanced Web Search</strong> - Powered by Exa MCP for high-quality, semantic search results</li>
+                    </ul>
+                    
+                    <h3>Technology Stack</h3>
+                    <ul>
+                        <li><strong>AgentKit</strong> - Coinbase's framework for building AI agents</li>
+                        <li><strong>VeriSense</strong> - Security-focused agent platform</li>
+                        <li><strong>MCP (Model Context Protocol)</strong> - For tool integration and agent coordination</li>
+                        <li><strong>A2A Coordination</strong> - Automatic agent-to-agent communication for complex tasks</li>
+                        <li><strong>Exa Search</strong> - Advanced semantic web search capabilities</li>
+                    </ul>
+                    
+                    <h3>How It Works</h3>
+                    <p>
+                        WebWatcher uses intelligent agent coordination to analyze security threats. When you scan a website, 
+                        multiple specialized agents work together:
+                    </p>
+                    <ul>
+                        <li><code>UrlFeatureAgent</code> extracts URL features and patterns</li>
+                        <li><code>PhishingRedFlagAgent</code> analyzes features for phishing indicators</li>
+                        <li>Results are automatically coordinated via A2A protocol</li>
+                    </ul>
+                    
+                    <h3>Usage</h3>
+                    <p>
+                        Simply type your security questions or use the quick action buttons above the input field. 
+                        Try commands like:
+                    </p>
+                    <ul>
+                        <li>"scan website example.com" - Scan for phishing risks</li>
+                        <li>"search CVE log4j" - Find vulnerability information</li>
+                        <li>"analyze transaction 0x..." - Analyze blockchain transactions</li>
+                    </ul>
+                    
+                    <p style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); color: #8b949e; font-size: 0.9em;">
+                        Built with ⚡ <strong>AgentKit</strong> and 🔒 <strong>VeriSense</strong> | Made by <strong>Edward</strong>
+                    </p>
                 </div>
             </div>
         </div>
@@ -1177,30 +1427,26 @@ app.get("/", (req, res) => {
             <div class="chat-section">
                 <h2>💬 Chat with WebWatcher</h2>
                 <div class="chat-messages" id="chatMessages">
-                    <div class="message agent">
-                        <div class="message-label">🔒 WebWatcher Agent</div>
-                        <div>Welcome! I'm WebWatcher, your cybersecurity agent. I can help you:</div>
-                        <ul style="margin-top: 10px; margin-left: 20px; line-height: 1.8;">
-                            <li>🔍 Analyze blockchain transactions for suspicious patterns</li>
-                            <li>🛡️ Check address security and risk assessment</li>
-                            <li>💰 Monitor wallet balance and detect anomalies</li>
-                            <li>📊 Provide comprehensive security summaries</li>
-                            <li>⚠️ Detect threats and security risks</li>
-                        </ul>
-                        <div style="margin-top: 15px; padding: 10px; background: rgba(0, 200, 255, 0.05); border-radius: 6px; border-left: 2px solid rgba(0, 200, 255, 0.3);">
-                            <strong style="color: #00d4ff;">💡 Try asking:</strong>
-                            <div style="margin-top: 5px; font-family: 'Courier New', monospace; font-size: 0.9em; color: #a0b8c8;">
-                                • "Analyze transaction 0x..."<br>
-                                • "Get security summary"<br>
-                                • "Monitor my wallet balance"<br>
-                                • "Check address 0x... for security risks"
-                            </div>
-                        </div>
-                    </div>
                 </div>
                 <div class="chat-input">
-                    <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses..." onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
-                    <button type="button" onclick="sendMessage()" id="sendButton" style="cursor: pointer;">Send</button>
+                    <div id="mcpSuggestions" style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 8px;">
+                        <button type="button" onclick="useMcpCommand('search_cve')" class="mcp-suggestion-btn" title="Search CVE vulnerabilities">
+                            🔍 Search CVE
+                        </button>
+                        <button type="button" onclick="useMcpCommand('analyze_transaction')" class="mcp-suggestion-btn" title="Analyze blockchain transaction">
+                            🔎 Analyze Transaction
+                        </button>
+                        <button type="button" onclick="useMcpCommand('scan_wallet_risks')" class="mcp-suggestion-btn" title="Scan wallet for risks">
+                            🛡️ Scan Wallet
+                        </button>
+                        <button type="button" onclick="useMcpCommand('summarize_security_state')" class="mcp-suggestion-btn" title="Get security summary">
+                            📊 Security Summary
+                        </button>
+                    </div>
+                    <div class="chat-input-row">
+                        <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses... (or click buttons above)" onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
+                        <button type="button" onclick="sendMessage()" id="sendButton" style="cursor: pointer;">➡️</button>
+                    </div>
                 </div>
             </div>
         </div>
@@ -1208,6 +1454,32 @@ app.get("/", (req, res) => {
 
     <script>
         let threadId = 'web-' + Date.now();
+
+        function openInfoModal() {
+            const modal = document.getElementById('infoModal');
+            if (modal) {
+                modal.classList.add('active');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeInfoModal(event) {
+            if (event) {
+                event.stopPropagation();
+            }
+            const modal = document.getElementById('infoModal');
+            if (modal) {
+                modal.classList.remove('active');
+                document.body.style.overflow = '';
+            }
+        }
+
+        // Close modal on Escape key
+        document.addEventListener('keydown', function(event) {
+            if (event.key === 'Escape') {
+                closeInfoModal(event);
+            }
+        });
 
         async function checkStatus() {
             // Status check removed per user request
@@ -1241,7 +1513,7 @@ app.get("/", (req, res) => {
                 }
                 
                 sendButton.disabled = true;
-                sendButton.textContent = 'Sending...';
+                sendButton.textContent = '⏳';
 
                 // Add user message to chat
                 addMessage('user', message);
@@ -1271,22 +1543,54 @@ app.get("/", (req, res) => {
                 const sendButton = document.getElementById('sendButton');
                 if (sendButton) {
                     sendButton.disabled = false;
-                    sendButton.textContent = 'Send';
+                    sendButton.textContent = '➡️';
                 }
-                refreshAnalytics();
+                // Analytics refresh removed - section no longer exists
+                // refreshAnalytics();
             }
         }
         
         // Make sendMessage available globally
         window.sendMessage = sendMessage;
 
+        // MCP command suggestions handler
+        function useMcpCommand(command) {
+            const input = document.getElementById('messageInput');
+            if (!input) return;
+
+            const examples = {
+                'search_cve': 'Search for CVE vulnerabilities in OpenSSL 2024',
+                'analyze_transaction': 'Analyze transaction 0x123... on ethereum',
+                'scan_wallet_risks': 'Scan wallet 0x456... on base for risks',
+                'summarize_security_state': 'Summarize security for address 0x789...'
+            };
+
+            const example = examples[command] || '';
+            input.value = example;
+            input.focus();
+            // Optionally auto-send
+            // sendMessage();
+        }
+        window.useMcpCommand = useMcpCommand;
+
         function addMessage(type, content) {
             const messagesDiv = document.getElementById('chatMessages');
+            if (!messagesDiv) return;
+            
             const messageDiv = document.createElement('div');
             messageDiv.className = 'message ' + type;
             messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'WebWatcher Agent') + '</div><div>' + formatMessage(content) + '</div>';
             messagesDiv.appendChild(messageDiv);
-            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            // Force scroll to bottom - use requestAnimationFrame for smooth scrolling
+            requestAnimationFrame(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            });
+            
+            // Also scroll after a short delay to ensure content is rendered
+            setTimeout(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            }, 50);
         }
 
         function formatMessage(content) {
@@ -1302,7 +1606,43 @@ app.get("/", (req, res) => {
                     // Not valid JSON, continue
                 }
             }
-            return content.replace(/\\n/g, '<br>');
+            
+            // Convert markdown code blocks and inline code
+            // Note: Using String.fromCharCode to avoid template string delimiter conflicts
+            const bt = String.fromCharCode(96);
+            const codeBlockRe = new RegExp(bt + bt + bt + '([\\s\\S]*?)' + bt + bt + bt, 'g');
+            content = content.replace(codeBlockRe, '<pre style="background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); padding: 10px; border-radius: 4px; overflow-x: auto; margin: 10px 0;"><code>$1</code></pre>');
+            const inlineCodeRe = new RegExp(bt + '([^' + bt + ']+)' + bt, 'g');
+            content = content.replace(inlineCodeRe, function(match, code) {
+                // Highlight A2A flow indicators with green background
+                if (code.indexOf('->') !== -1 || code.indexOf('Agent') !== -1 || code.indexOf('User') !== -1) {
+                    return '<code style="background: rgba(0, 255, 136, 0.2); padding: 2px 6px; border-radius: 3px; color: #00ff88; font-weight: bold; border: 1px solid rgba(0, 255, 136, 0.4);">' + code + '</code>';
+                }
+                return '<code style="background: rgba(0, 255, 255, 0.1); padding: 2px 4px; border-radius: 3px;">' + code + '</code>';
+            });
+            
+            // Convert markdown links [text](url) to HTML hyperlinks (must be done before other markdown)
+            content = content.replace(/\\[([^\\]]+)\\]\\(([^)]+)\\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #00d4ff; text-decoration: underline; cursor: pointer;">$1</a>');
+            
+            // Convert markdown bold **text** to HTML (handle multiple bold sections)
+            content = content.replace(/\\*\\*([^*]+)\\*\\*/g, '<strong>$1</strong>');
+            
+            // Convert markdown italic *text* to HTML (avoid matching **bold**)
+            // Match single * that aren't preceded or followed by another *
+            content = content.replace(/(^|[^*])\\*([^*]+)\\*([^*]|$)/g, '$1<em>$2</em>$3');
+            
+            // Convert markdown headers # Header to HTML
+            content = content.replace(/^### (.*$)/gm, '<h3>$1</h3>');
+            content = content.replace(/^## (.*$)/gm, '<h2>$1</h2>');
+            content = content.replace(/^# (.*$)/gm, '<h1>$1</h1>');
+            
+            // Convert markdown lists - item to HTML
+            content = content.replace(/^- (.*$)/gm, '<li>$1</li>');
+            
+            // Convert line breaks
+            content = content.replace(/\\n/g, '<br>');
+            
+            return content;
         }
 
         async function refreshAnalytics() {
@@ -1311,47 +1651,51 @@ app.get("/", (req, res) => {
                 const data = await response.json();
                 
                 const analyticsDiv = document.getElementById('analyticsContent');
-                analyticsDiv.innerHTML = \`
-                    <div class="analytics-card">
-                        <h3>📈 Summary (Last 24 Hours)</h3>
-                        <div class="stat">
-                            <span class="stat-label">Total Events</span>
-                            <span class="stat-value">\${data.totalEvents}</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-label">Average Risk Score</span>
-                            <span class="stat-value">\${data.averageRiskScore.toFixed(2)}</span>
-                        </div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>⚠️ By Severity</h3>
-                        <div class="stat">
-                            <span class="stat-label">Low</span>
-                            <span class="stat-value">\${data.bySeverity.low || 0}</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-label">Medium</span>
-                            <span class="stat-value">\${data.bySeverity.medium || 0}</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-label">High</span>
-                            <span class="stat-value">\${data.bySeverity.high || 0}</span>
-                        </div>
-                        <div class="stat">
-                            <span class="stat-label">Critical</span>
-                            <span class="stat-value">\${data.bySeverity.critical || 0}</span>
-                        </div>
-                    </div>
-                    <div class="analytics-card">
-                        <h3>📋 By Type</h3>
-                        \${Object.entries(data.byType || {}).map(([type, count]) => 
-                            \`<div class="stat">
-                                <span class="stat-label">\${type}</span>
-                                <span class="stat-value">\${count}</span>
-                            </div>\`
-                        ).join('')}
-                    </div>
-                \`;
+                if (!analyticsDiv) {
+                    // Analytics section removed, skip refresh
+                    return;
+                }
+                analyticsDiv.innerHTML =
+                    '<div class="analytics-card">' +
+                        '<h3>📈 Summary (Last 24 Hours)</h3>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">Total Events</span>' +
+                            '<span class="stat-value">' + data.totalEvents + '</span>' +
+                        '</div>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">Average Risk Score</span>' +
+                            '<span class="stat-value">' + data.averageRiskScore.toFixed(2) + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="analytics-card">' +
+                        '<h3>⚠️ By Severity</h3>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">Low</span>' +
+                            '<span class="stat-value">' + (data.bySeverity.low || 0) + '</span>' +
+                        '</div>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">Medium</span>' +
+                            '<span class="stat-value">' + (data.bySeverity.medium || 0) + '</span>' +
+                        '</div>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">High</span>' +
+                            '<span class="stat-value">' + (data.bySeverity.high || 0) + '</span>' +
+                        '</div>' +
+                        '<div class="stat">' +
+                            '<span class="stat-label">Critical</span>' +
+                            '<span class="stat-value">' + (data.bySeverity.critical || 0) + '</span>' +
+                        '</div>' +
+                    '</div>' +
+                    '<div class="analytics-card">' +
+                        '<h3>📋 By Type</h3>' +
+                        Object.entries(data.byType || {}).map(([type, count]) => 
+                            '<div class="stat">' +
+                                '<span class="stat-label">' + type + '</span>' +
+                                '<span class="stat-value">' + count + '</span>' +
+                            '</div>'
+                        ).join('') +
+                    '</div>' +
+                '';
             } catch (error) {
                 document.getElementById('analyticsContent').innerHTML = '<div class="loading">Error loading analytics</div>';
             }
@@ -1359,12 +1703,13 @@ app.get("/", (req, res) => {
 
         // Initialize
         checkStatus();
-        refreshAnalytics();
+        // Analytics refresh removed - section no longer exists
+        // refreshAnalytics();
         setInterval(checkStatus, 5000);
-        setInterval(refreshAnalytics, 30000);
+        // setInterval(refreshAnalytics, 30000);
     </script>
     
-    <footer style="background: rgba(0, 255, 255, 0.05); border-top: 1px solid rgba(0, 255, 255, 0.15); color: #8a98a8; padding: 20px; text-align: center; margin-top: 30px;">
+    <footer style="background: rgba(0, 255, 255, 0.05); border-top: 1px solid rgba(0, 255, 255, 0.15); color: #8a98a8; padding: 20px; text-align: center; margin-top: auto; width: 100%;">
         <div style="font-size: 0.95em; line-height: 1.8; font-family: 'Courier New', monospace;">
             Built with 
             <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;" onmouseover="this.style.borderBottomColor='rgba(0, 212, 255, 0.8)'; this.style.textShadow='0 0 8px rgba(0, 212, 255, 0.3)'" onmouseout="this.style.borderBottomColor='rgba(0, 212, 255, 0.4)'; this.style.textShadow='none'">AgentKit</a>

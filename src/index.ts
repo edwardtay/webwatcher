@@ -17,13 +17,12 @@ import * as readline from "readline";
 // See loadActionProviders() function below
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
-import { levelManager, AnalystLevel } from "./utils/level-manager";
+import { getSystemPrompt } from "./utils/system-prompt";
 
 dotenv.config();
 
 /**
  * Validates that required environment variables are set
- * For Level 1 (local/air-gapped), only OpenAI key is required
  */
 function validateEnvironment(): void {
   const missingVars: string[] = [];
@@ -33,23 +32,10 @@ function validateEnvironment(): void {
     missingVars.push("OPENAI_API_KEY");
   }
 
-  // Check current level - if Level 1, CDP keys are optional
-  const level = process.env.ANALYST_LEVEL?.toLowerCase() || "level_1_local";
-  const isLevel1 = level === "1" || level === "level_1" || level === "local" || level === "level_1_local";
-
-  // CDP keys only required for levels 2+
-  if (!isLevel1) {
-    const cdpVars = [
-      "CDP_API_KEY_ID",
-      "CDP_API_KEY_SECRET",
-      "CDP_WALLET_SECRET",
-    ];
-
-    cdpVars.forEach((varName) => {
-      if (!process.env[varName]) {
-        missingVars.push(varName);
-      }
-    });
+  // CDP keys are optional - only needed for blockchain operations
+  // EXA_API_KEY is recommended for search functionality
+  if (!process.env.EXA_API_KEY) {
+    logger.warn("EXA_API_KEY not set - search functionality will be limited");
   }
 
   if (missingVars.length > 0) {
@@ -57,85 +43,37 @@ function validateEnvironment(): void {
     missingVars.forEach((varName) => {
       console.error(`${varName}=your_${varName.toLowerCase()}_here`);
     });
-    if (!isLevel1) {
-      process.exit(1);
-    } else {
-      logger.warn("Level 1 mode: CDP keys not required, but some features will be unavailable");
-    }
+    process.exit(1);
   }
 
-  if (!process.env.NETWORK_ID && !isLevel1) {
-    logger.warn("NETWORK_ID not set, defaulting to base-sepolia testnet");
+  if (!process.env.NETWORK_ID) {
+    logger.warn("NETWORK_ID not set, defaulting to base-sepolia testnet (blockchain features may be limited)");
   }
 }
 
 validateEnvironment();
 
-// Lazy import action providers to avoid decorator metadata issues during module load
-let level1LocalActionProvider: any;
-let level2IntelActionProvider: any;
-let level3McpActionProvider: any;
-let level4AA2AActionProvider: any;
-let level4BX402ActionProvider: any;
+// Lazy import unified action provider
+let unifiedActionProviderFn: any;
 
 async function loadActionProviders() {
   try {
-    const level1Module = await import("./action-providers/level1-local.js");
-    level1LocalActionProvider = level1Module.level1LocalActionProvider;
-    logger.info("✓ Level 1 action provider loaded");
+    const unifiedModule = await import("./action-providers/unified-action-provider.js");
+    unifiedActionProviderFn = unifiedModule.unifiedActionProvider;
+    logger.info("✓ Unified action provider loaded");
   } catch (error) {
-    logger.warn("Failed to load Level 1 action provider (will continue without it):", error instanceof Error ? error.message : String(error));
-  }
-  
-  try {
-    const level2Module = await import("./action-providers/level2-intel.js");
-    level2IntelActionProvider = level2Module.level2IntelActionProvider;
-    logger.info("✓ Level 2 action provider loaded");
-  } catch (error) {
-    logger.warn("Failed to load Level 2 action provider:", error instanceof Error ? error.message : String(error));
-  }
-  
-  try {
-    const level3Module = await import("./action-providers/level3-mcp.js");
-    level3McpActionProvider = level3Module.level3McpActionProvider;
-    logger.info("✓ Level 3 action provider loaded");
-  } catch (error) {
-    logger.warn("Failed to load Level 3 action provider:", error instanceof Error ? error.message : String(error));
-  }
-  
-  try {
-    const level4AModule = await import("./action-providers/level4a-a2a.js");
-    level4AA2AActionProvider = level4AModule.level4AA2AActionProvider;
-    logger.info("✓ Level 4A action provider loaded");
-  } catch (error) {
-    logger.warn("Failed to load Level 4A action provider:", error instanceof Error ? error.message : String(error));
-  }
-  
-  try {
-    const level4BModule = await import("./action-providers/level4b-x402.js");
-    level4BX402ActionProvider = level4BModule.level4BX402ActionProvider;
-    logger.info("✓ Level 4B action provider loaded");
-  } catch (error) {
-    logger.warn("Failed to load Level 4B action provider:", error instanceof Error ? error.message : String(error));
+    logger.warn("Failed to load unified action provider:", error instanceof Error ? error.message : String(error));
   }
 }
 
 /**
  * Initialize the WebWatcher cybersecurity agent with AgentKit (built on VeriSense)
- * @param level Optional analyst level (defaults to environment variable or LEVEL_1_LOCAL)
+ * No levels - agent intelligently uses all available tools
  */
-export async function initializeAgent(level?: AnalystLevel) {
+export async function initializeAgent() {
   try {
-    // Set level if provided
-    if (level) {
-      levelManager.setLevel(level);
-    }
-    
-    const currentLevel = levelManager.getCurrentLevel();
-    const capabilities = levelManager.getCapabilities();
-    
-    logger.info(`Initializing WebWatcher Agent (VeriSense) at ${currentLevel}...`);
-    logger.info(`Capabilities: ${capabilities.description}`);
+    logger.info("Initializing WebWatcher Agent (VeriSense)...");
+    logger.info("Agent uses all available tools intelligently - no levels");
 
     // Initialize LLM
     const llm = new ChatOpenAI({
@@ -143,11 +81,11 @@ export async function initializeAgent(level?: AnalystLevel) {
       temperature: 0.3, // Lower temperature for more consistent security analysis
     });
 
-    // Configure CDP Wallet Provider (only if network access is needed)
+    // Configure CDP Wallet Provider (optional - only if CDP keys are provided)
     let walletProvider: any = null;
     let walletDetails: any = null;
     
-    if (capabilities.networkAccess || capabilities.payments) {
+    if (process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET && process.env.CDP_WALLET_SECRET) {
       const networkId = process.env.NETWORK_ID || "base-sepolia";
       logger.info(`Using network: ${networkId}`);
 
@@ -168,14 +106,14 @@ export async function initializeAgent(level?: AnalystLevel) {
       // walletDetails = await walletProvider.getWalletDetails();
       logger.warn("Wallet provider initialization temporarily disabled - API needs update");
     } else {
-      logger.info("Level 1 mode: No network access, wallet not initialized");
+      logger.info("CDP keys not provided - blockchain features will be limited");
     }
 
-    // Initialize action providers based on level
+    // Initialize action providers
     const actionProviders: any[] = [];
     
-    // Base blockchain providers (only if network access available and CDP keys are set)
-    if (capabilities.networkAccess && walletProvider && process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET) {
+    // Base blockchain providers (only if wallet provider is available)
+    if (walletProvider && process.env.CDP_API_KEY_ID && process.env.CDP_API_KEY_SECRET) {
       try {
         actionProviders.push(
           walletActionProvider(),
@@ -183,54 +121,19 @@ export async function initializeAgent(level?: AnalystLevel) {
           cdpWalletActionProvider(),
           erc20ActionProvider(),
         );
-        // Note: securityActionProvider() is disabled due to decorator metadata issue
-        // Use level-specific providers instead
       } catch (error) {
         logger.warn("Failed to load some blockchain providers:", error);
       }
     }
     
-    // Load action providers lazily to avoid decorator metadata issues
+    // Load unified action provider (includes all capabilities)
     await loadActionProviders();
     
-    // Level-specific providers
-    if (level1LocalActionProvider) {
+    if (unifiedActionProviderFn) {
       try {
-        actionProviders.push(level1LocalActionProvider()); // Always available
+        actionProviders.push(unifiedActionProviderFn());
       } catch (error) {
-        logger.warn("Failed to instantiate Level 1 action provider:", error);
-      }
-    }
-    
-    if (capabilities.webSearch && level2IntelActionProvider) {
-      try {
-        actionProviders.push(level2IntelActionProvider());
-      } catch (error) {
-        logger.warn("Failed to instantiate Level 2 action provider:", error);
-      }
-    }
-    
-    if (capabilities.mcpTools && level3McpActionProvider) {
-      try {
-        actionProviders.push(level3McpActionProvider());
-      } catch (error) {
-        logger.warn("Failed to instantiate Level 3 action provider:", error);
-      }
-    }
-    
-    if (capabilities.a2aCoordination && level4AA2AActionProvider) {
-      try {
-        actionProviders.push(level4AA2AActionProvider());
-      } catch (error) {
-        logger.warn("Failed to instantiate Level 4A action provider:", error);
-      }
-    }
-    
-    if (capabilities.payments && level4BX402ActionProvider) {
-      try {
-        actionProviders.push(level4BX402ActionProvider());
-      } catch (error) {
-        logger.warn("Failed to instantiate Level 4B action provider:", error);
+        logger.warn("Failed to instantiate unified action provider:", error);
       }
     }
     
@@ -259,23 +162,23 @@ export async function initializeAgent(level?: AnalystLevel) {
           tools = await getLangChainTools(agentkit);
         }
       } catch (error) {
-        logger.warn("Failed to initialize AgentKit (this is OK for Level 1):", error instanceof Error ? error.message : String(error));
+        logger.warn("Failed to initialize AgentKit:", error instanceof Error ? error.message : String(error));
         logger.info("Continuing without AgentKit - agent will work in chat-only mode");
       }
     } else {
       logger.info("No action providers loaded - agent will work in chat-only mode");
     }
 
-    logger.info(`Loaded ${tools.length} tools for the agent at ${currentLevel}`);
+    logger.info(`Loaded ${tools.length} tools for the agent`);
 
     // Store conversation history in memory
     const memory = new MemorySaver();
     const agentConfig = {
-      configurable: { thread_id: `verisense-webwatcher-${currentLevel}-${Date.now()}` },
+      configurable: { thread_id: `webwatcher-${Date.now()}` },
     };
 
-    // Create React Agent with level-specific system prompt
-    const systemPrompt = levelManager.getSystemPrompt();
+    // Create React Agent with unified system prompt
+    const systemPrompt = getSystemPrompt();
     
     // Best Practice: Always provide tools array (empty if no tools available)
     // Note: maxIterations and handleParsingErrors are handled by LangGraph configuration
@@ -286,8 +189,8 @@ export async function initializeAgent(level?: AnalystLevel) {
       messageModifier: systemPrompt,
     });
 
-    logger.info(`Agent initialized successfully at ${currentLevel}`);
-    return { agent, config: agentConfig, level: currentLevel, capabilities };
+    logger.info("Agent initialized successfully");
+    return { agent, config: agentConfig };
   } catch (error) {
     logger.error("Failed to initialize agent", error);
     throw error;
@@ -345,16 +248,13 @@ async function runMonitoringMode(
  * Run the agent interactively in chat mode
  */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
-async function runChatMode(agent: any, config: any, level: AnalystLevel, capabilities: any) {
-  logger.info(`Starting chat mode at ${level}...`);
+async function runChatMode(agent: any, config: any) {
+  logger.info("Starting chat mode...");
   console.log(`\n=== WebWatcher Agent (Built on VeriSense) ===`);
-  console.log(`Current Level: ${level}`);
-  console.log(`Capabilities: ${capabilities.description}`);
+  console.log("Agent uses all available tools intelligently");
   console.log("\nCommands:");
   console.log("  'exit' - Exit chat mode");
   console.log("  'summary' - Show security analytics summary");
-  console.log("  'level' - Show current level and capabilities");
-  console.log("  'switch <level>' - Switch to different level (1, 2, 3, 4a, 4b)");
   console.log("\nType your security analysis questions below:\n");
 
   const rl = readline.createInterface({
@@ -365,15 +265,10 @@ async function runChatMode(agent: any, config: any, level: AnalystLevel, capabil
   const question = (prompt: string): Promise<string> =>
     new Promise((resolve) => rl.question(prompt, resolve));
 
-  let currentAgent = agent;
-  let currentConfig = config;
-  let currentLevel = level;
-  let currentCapabilities = capabilities;
-
   try {
     // eslint-disable-next-line no-constant-condition
     while (true) {
-      const userInput = await question(`\n[WebWatcher ${currentLevel}] > `);
+      const userInput = await question(`\n[WebWatcher] > `);
 
       if (userInput.toLowerCase() === "exit") {
         break;
@@ -386,73 +281,9 @@ async function runChatMode(agent: any, config: any, level: AnalystLevel, capabil
         continue;
       }
 
-      if (userInput.toLowerCase() === "level") {
-        console.log(`\nCurrent Level: ${currentLevel}`);
-        console.log(`Description: ${currentCapabilities.description}`);
-        console.log(`Network Access: ${currentCapabilities.networkAccess ? "Yes" : "No"}`);
-        console.log(`Web Search: ${currentCapabilities.webSearch ? "Yes" : "No"}`);
-        console.log(`MCP Tools: ${currentCapabilities.mcpTools ? "Yes" : "No"}`);
-        console.log(`A2A Coordination: ${currentCapabilities.a2aCoordination ? "Yes" : "No"}`);
-        console.log(`Payments: ${currentCapabilities.payments ? "Yes" : "No"}`);
-        continue;
-      }
-
-      if (userInput.toLowerCase().startsWith("switch ")) {
-        const levelArg = userInput.toLowerCase().replace("switch ", "").trim();
-        let newLevel: AnalystLevel | null = null;
-        
-        switch (levelArg) {
-          case "1":
-          case "level_1":
-          case "local":
-            newLevel = AnalystLevel.LEVEL_1_LOCAL;
-            break;
-          case "2":
-          case "level_2":
-          case "intel":
-            newLevel = AnalystLevel.LEVEL_2_INTEL;
-            break;
-          case "3":
-          case "level_3":
-          case "tools":
-            newLevel = AnalystLevel.LEVEL_3_TOOLS;
-            break;
-          case "4a":
-          case "level_4a":
-          case "a2a":
-            newLevel = AnalystLevel.LEVEL_4A_A2A;
-            break;
-          case "4b":
-          case "level_4b":
-          case "x402":
-            newLevel = AnalystLevel.LEVEL_4B_X402;
-            break;
-          default:
-            console.log(`Unknown level: ${levelArg}`);
-            console.log("Available levels: 1, 2, 3, 4a, 4b");
-            continue;
-        }
-
-        if (newLevel) {
-          console.log(`\nSwitching to ${newLevel}...`);
-          try {
-            const { agent: newAgent, config: newConfig, level: newLvl, capabilities: newCaps } = await initializeAgent(newLevel);
-            currentAgent = newAgent;
-            currentConfig = newConfig;
-            currentLevel = newLvl;
-            currentCapabilities = newCaps;
-            console.log(`Successfully switched to ${newLvl}`);
-            console.log(`Capabilities: ${newCaps.description}`);
-          } catch (error) {
-            console.error(`Failed to switch level: ${error instanceof Error ? error.message : String(error)}`);
-          }
-        }
-        continue;
-      }
-
-      const stream = await currentAgent.stream(
+      const stream = await agent.stream(
         { messages: [new HumanMessage(userInput)] },
-        currentConfig,
+        config,
       );
 
       for await (const chunk of stream) {
@@ -513,14 +344,14 @@ async function main() {
     logger.info("=== WebWatcher Agent (Built on VeriSense) ===");
     logger.info("Starting agent initialization...");
 
-    const { agent, config, level, capabilities } = await initializeAgent();
+    const { agent, config } = await initializeAgent();
     const mode = await chooseMode();
 
     const intervalSeconds =
       parseInt(process.env.MONITORING_INTERVAL_SECONDS || "30", 10) || 30;
 
     if (mode === "chat") {
-      await runChatMode(agent, config, level, capabilities);
+      await runChatMode(agent, config);
     } else {
       await runMonitoringMode(agent, config, intervalSeconds);
     }

@@ -9,6 +9,7 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 import { logger } from "./logger";
 
 let exaClient: Client | null = null;
+let webwatcherClient: Client | null = null;
 
 /**
  * Helper function to extract title from text content
@@ -121,9 +122,19 @@ export async function getExaClient(): Promise<Client | null> {
     try {
       await fs.access(localMcpPath);
       // Use local MCP server file
-      exaServerCommand = "tsx";
-      exaServerArgs = [localMcpPath];
-      logger.info(`Using local Exa MCP server: ${localMcpPath}`);
+      // Try npx tsx first (uses local node_modules), then tsx (global), then node with tsx
+      const nodeModulesTsx = path.join(process.cwd(), "node_modules", ".bin", "tsx");
+      try {
+        await fs.access(nodeModulesTsx);
+        exaServerCommand = nodeModulesTsx;
+        exaServerArgs = [localMcpPath];
+        logger.info(`Using local Exa MCP server via node_modules tsx: ${localMcpPath}`);
+      } catch {
+        // Try npx tsx (will use local or download)
+        exaServerCommand = "npx";
+        exaServerArgs = ["-y", "tsx", localMcpPath];
+        logger.info(`Using local Exa MCP server via npx tsx: ${localMcpPath}`);
+      }
     } catch {
       // Fall back to global exa-mcp command or env var
       exaServerCommand = process.env.EXA_MCP_SERVER_COMMAND || "exa-mcp";
@@ -399,6 +410,308 @@ export async function exaSearch(
 }
 
 /**
+ * Initialize WebWatcher MCP client (for webwatcher-mcp.ts)
+ */
+export async function getWebWatcherClient(): Promise<Client | null> {
+  if (webwatcherClient) {
+    return webwatcherClient;
+  }
+
+  // Check if HTTP-based MCP server URL is provided (for Cloud Run)
+  const mcpServerUrl = process.env.WEBWATCHER_MCP_SERVER_URL;
+  
+  if (mcpServerUrl) {
+    // Use HTTP transport for Cloud Run/serverless environments
+    try {
+      logger.info(`Connecting to WebWatcher MCP server via HTTP: ${mcpServerUrl}`);
+      
+      const transport = new StreamableHTTPClientTransport(
+        new URL(mcpServerUrl),
+        {
+          requestInit: {
+            headers: {
+              "Authorization": `Bearer ${process.env.EXA_API_KEY || ""}`,
+              "Content-Type": "application/json",
+            },
+          },
+        }
+      );
+
+      webwatcherClient = new Client(
+        {
+          name: "verisense-webwatcher-client",
+          version: "1.0.0",
+        },
+        {},
+      );
+
+      await webwatcherClient.connect(transport);
+      logger.info("✓ Connected to WebWatcher MCP server via HTTP");
+      return webwatcherClient;
+    } catch (error) {
+      logger.warn("Failed to connect to WebWatcher MCP server via HTTP", error);
+      return null;
+    }
+  }
+
+  // Check if we're in a serverless environment without HTTP MCP URL
+  if (process.env.K_SERVICE || process.env.FUNCTION_TARGET || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+    logger.info("Serverless environment detected. Set WEBWATCHER_MCP_SERVER_URL to use MCP, otherwise skipping.");
+    return null;
+  }
+
+  // Only try stdio MCP if explicitly enabled (for local development)
+  if (process.env.WEBWATCHER_USE_MCP !== "true" && process.env.EXA_USE_MCP !== "true") {
+    logger.info("WebWatcher MCP server disabled (set WEBWATCHER_USE_MCP=true or WEBWATCHER_MCP_SERVER_URL for HTTP).");
+    return null;
+  }
+
+  // Use stdio transport for local development
+  try {
+    // Check if local webwatcher-mcp.ts file exists, use tsx to run it
+    const fs = await import("fs/promises");
+    const path = await import("path");
+    const localMcpPath = path.join(process.cwd(), "mcp", "webwatcher-mcp.ts");
+    
+    let mcpServerCommand: string;
+    let mcpServerArgs: string[];
+    
+    try {
+      await fs.access(localMcpPath);
+      // Use local MCP server file
+      const nodeModulesTsx = path.join(process.cwd(), "node_modules", ".bin", "tsx");
+      try {
+        await fs.access(nodeModulesTsx);
+        mcpServerCommand = nodeModulesTsx;
+        mcpServerArgs = [localMcpPath];
+        logger.info(`Using local WebWatcher MCP server via node_modules tsx: ${localMcpPath}`);
+      } catch {
+        // Try npx tsx (will use local or download)
+        mcpServerCommand = "npx";
+        mcpServerArgs = ["-y", "tsx", localMcpPath];
+        logger.info(`Using local WebWatcher MCP server via npx tsx: ${localMcpPath}`);
+      }
+    } catch {
+      // Fall back to global webwatcher-mcp command or env var
+      mcpServerCommand = process.env.WEBWATCHER_MCP_SERVER_COMMAND || "webwatcher-mcp";
+      mcpServerArgs = process.env.WEBWATCHER_MCP_SERVER_ARGS 
+        ? process.env.WEBWATCHER_MCP_SERVER_ARGS.split(" ")
+        : [];
+    }
+
+    logger.info(`Connecting to WebWatcher MCP server via stdio: ${mcpServerCommand} ${mcpServerArgs.length > 0 ? mcpServerArgs.join(" ") : ""}`);
+
+    const transport = new StdioClientTransport({
+      command: mcpServerCommand,
+      args: mcpServerArgs,
+      env: {
+        ...process.env,
+        EXA_API_KEY: process.env.EXA_API_KEY || "",
+      },
+    });
+
+    webwatcherClient = new Client(
+      {
+        name: "verisense-webwatcher-client",
+        version: "1.0.0",
+      },
+      {},
+    );
+
+    await webwatcherClient.connect(transport);
+    logger.info("✓ Connected to WebWatcher MCP server via stdio");
+
+    return webwatcherClient;
+  } catch (error) {
+    logger.warn("Failed to connect to WebWatcher MCP server via stdio", error);
+    return null;
+  }
+}
+
+/**
+ * Call a WebWatcher MCP tool
+ */
+async function callWebWatcherTool(
+  toolName: string,
+  args: any,
+): Promise<any> {
+  const client = await getWebWatcherClient();
+  if (!client) {
+    throw new Error("WebWatcher MCP client not available");
+  }
+
+  const tools = await client.listTools();
+  const tool = tools.tools.find((t: any) => t.name === toolName);
+  
+  if (!tool) {
+    throw new Error(`Tool ${toolName} not found in WebWatcher MCP server`);
+  }
+
+  logger.info(`[MCP] Calling WebWatcher MCP tool: ${toolName}`);
+  const result = await client.callTool({
+    name: toolName,
+    arguments: args,
+  });
+
+  return result;
+}
+
+/**
+ * Search CVE entries using WebWatcher MCP
+ */
+export async function searchCVE(
+  query: string,
+  year?: string,
+  numResults: number = 5,
+): Promise<Array<{ title: string; url: string; snippet?: string; source: string }>> {
+  try {
+    const result = await callWebWatcherTool("search_cve", {
+      query,
+      year,
+      numResults,
+    });
+
+    if (result.structuredContent?.results) {
+      logger.info(`✓ [MCP] search_cve returned ${result.structuredContent.results.length} results`);
+      return result.structuredContent.results.map((r: any) => ({
+        title: String(r.title || ""),
+        url: String(r.url || ""),
+        snippet: String(r.snippet || ""),
+        source: "MCP",
+      }));
+    }
+
+    return [];
+  } catch (error) {
+    logger.error("Error calling search_cve via MCP", error);
+    throw error;
+  }
+}
+
+/**
+ * Analyze blockchain transaction using WebWatcher MCP
+ */
+export async function analyzeTransaction(
+  chain: string,
+  txHash: string,
+): Promise<{
+  chain: string;
+  txHash: string;
+  riskScore: number;
+  findings: string[];
+  summary: string;
+  source: string;
+}> {
+  try {
+    const result = await callWebWatcherTool("analyze_transaction", {
+      chain,
+      txHash,
+    });
+
+    if (result.structuredContent) {
+      logger.info(`✓ [MCP] analyze_transaction completed for ${txHash}`);
+      return {
+        ...(result.structuredContent as {
+          chain: string;
+          txHash: string;
+          riskScore: number;
+          findings: string[];
+          summary: string;
+        }),
+        source: "MCP",
+      };
+    }
+
+    throw new Error("Invalid response from analyze_transaction");
+  } catch (error) {
+    logger.error("Error calling analyze_transaction via MCP", error);
+    throw error;
+  }
+}
+
+/**
+ * Scan wallet for risks using WebWatcher MCP
+ */
+export async function scanWalletRisks(
+  chain: string,
+  address: string,
+): Promise<{
+  chain: string;
+  address: string;
+  riskScore: number;
+  tags: string[];
+  alerts: string[];
+  summary: string;
+  source: string;
+}> {
+  try {
+    const result = await callWebWatcherTool("scan_wallet_risks", {
+      chain,
+      address,
+    });
+
+    if (result.structuredContent) {
+      logger.info(`✓ [MCP] scan_wallet_risks completed for ${address}`);
+      return {
+        ...(result.structuredContent as {
+          chain: string;
+          address: string;
+          riskScore: number;
+          tags: string[];
+          alerts: string[];
+          summary: string;
+        }),
+        source: "MCP",
+      };
+    }
+
+    throw new Error("Invalid response from scan_wallet_risks");
+  } catch (error) {
+    logger.error("Error calling scan_wallet_risks via MCP", error);
+    throw error;
+  }
+}
+
+/**
+ * Summarize security state using WebWatcher MCP
+ */
+export async function summarizeSecurityState(
+  subject: string,
+  context?: string,
+): Promise<{
+  subject: string;
+  context?: string;
+  summary: string;
+  recommendations: string[];
+  source: string;
+}> {
+  try {
+    const result = await callWebWatcherTool("summarize_security_state", {
+      subject,
+      context,
+    });
+
+    if (result.structuredContent) {
+      logger.info(`✓ [MCP] summarize_security_state completed for ${subject}`);
+      return {
+        ...(result.structuredContent as {
+          subject: string;
+          context?: string;
+          summary: string;
+          recommendations: string[];
+        }),
+        source: "MCP",
+      };
+    }
+
+    throw new Error("Invalid response from summarize_security_state");
+  } catch (error) {
+    logger.error("Error calling summarize_security_state via MCP", error);
+    throw error;
+  }
+}
+
+/**
  * Close Exa MCP client connection
  */
 export async function closeExaClient(): Promise<void> {
@@ -409,6 +722,21 @@ export async function closeExaClient(): Promise<void> {
       logger.info("Closed Exa MCP client connection");
     } catch (error) {
       logger.error("Error closing Exa MCP client", error);
+    }
+  }
+}
+
+/**
+ * Close WebWatcher MCP client connection
+ */
+export async function closeWebWatcherClient(): Promise<void> {
+  if (webwatcherClient) {
+    try {
+      await webwatcherClient.close();
+      webwatcherClient = null;
+      logger.info("Closed WebWatcher MCP client connection");
+    } catch (error) {
+      logger.error("Error closing WebWatcher MCP client", error);
     }
   }
 }
