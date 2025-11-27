@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "echo 'No build needed for static HTML'",
+  "buildCommand": "bash -c 'if [ -n \"$API_URL\" ]; then sed -i \"s|window.__API_URL__|window.__API_URL__ = \\\"$API_URL\\\";|g\" index.html 2>/dev/null || true; fi'",
   "outputDirectory": ".",
   "rewrites": [
     {

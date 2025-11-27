@@ -475,8 +475,11 @@
     </div>
 
     <script>
-        // API endpoint - change this to your Google Cloud Run URL
-        const API_BASE_URL = process.env.API_URL || 'https://verisense-agentkit-414780218994.us-central1.run.app';
+        // API endpoint - Set API_URL environment variable in Vercel dashboard
+        // Defaults to Google Cloud Run URL if not set
+        const API_BASE_URL = (typeof window !== 'undefined' && window.__API_URL__) 
+            ? window.__API_URL__ 
+            : 'https://verisense-agentkit-414780218994.us-central1.run.app';
         
         let threadId = 'web-' + Date.now();
 
@@ -533,7 +536,7 @@
                 addMessage('user', message);
                 input.value = '';
 
-                const response = await fetch(`${API_BASE_URL}/api/chat`, {
+                const response = await fetch(API_BASE_URL + '/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message, threadId })
