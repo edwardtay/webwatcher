@@ -253,6 +253,12 @@ app.get("/.well-known/agent.json", (_req, res) => {
   res.json(agentCard);
 });
 
-app.listen(port, "0.0.0.0", () => {
-  console.log(`[INFO] http server listening on port ${port}`);
-});
+// Export app for Vercel serverless functions
+export default app;
+
+// Only start server if not in Vercel environment
+if (process.env.VERCEL !== "1") {
+  app.listen(port, "0.0.0.0", () => {
+    console.log(`[INFO] http server listening on port ${port}`);
+  });
+}
