@@ -1,0 +1,10 @@
+{
+  "name": "webwatcher-frontend",
+  "version": "1.0.0",
+  "description": "WebWatcher Frontend - Cybersecurity Agent UI",
+  "scripts": {
+    "build": "bash _vercel_build.sh",
+    "vercel-build": "bash _vercel_build.sh"
+  }
+}
+

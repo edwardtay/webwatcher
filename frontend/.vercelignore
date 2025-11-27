@@ -1,0 +1,7 @@
+# Ignore files that shouldn't be deployed
+*.backup
+*.log
+node_modules/
+.env
+.env.local
+

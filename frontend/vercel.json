@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "buildCommand": "bash -c 'if [ -n \"$API_URL\" ]; then sed -i \"s|window.__API_URL__|window.__API_URL__ = \\\"$API_URL\\\";|g\" index.html 2>/dev/null || true; fi'",
+  "buildCommand": "bash _vercel_build.sh",
   "outputDirectory": ".",
   "rewrites": [
     {

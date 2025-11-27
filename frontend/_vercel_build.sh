@@ -4,8 +4,24 @@
 
 API_URL=${API_URL:-"https://verisense-agentkit-414780218994.us-central1.run.app"}
 
-# Inject API_URL into index.html as a script variable
-sed -i "s|window.__API_URL__ |||window.__API_URL__ = '${API_URL}';|g" index.html || true
+# Inject API_URL into index.html
+if [ -n "$API_URL" ]; then
+    # Create a temporary file
+    TEMP_FILE=$(mktemp)
+    
+    # Remove any existing window.__API_URL__ assignments first
+    # Then inject new one before "const API_BASE_URL"
+    awk -v api_url="$API_URL" '
+        /window\.__API_URL__ = / { next }  # Skip existing assignments
+        /const API_BASE_URL/ && !injected {
+            print "        window.__API_URL__ = '\''" api_url "'\'';"
+            injected = 1
+        }
+        { print }
+    ' index.html > "$TEMP_FILE" && mv "$TEMP_FILE" index.html
+    
+    # Cleanup
+    rm -f "$TEMP_FILE" 2>/dev/null || true
+fi
 
 echo "✓ API_URL injected: ${API_URL}"
-

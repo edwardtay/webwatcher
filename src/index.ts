@@ -5,6 +5,7 @@ import {
   erc20ActionProvider,
   cdpApiActionProvider,
   cdpWalletActionProvider,
+  Network,
 } from "@coinbase/agentkit";
 import { getLangChainTools } from "@coinbase/agentkit-langchain";
 import { HumanMessage } from "@langchain/core/messages";
@@ -99,12 +100,21 @@ export async function initializeAgent() {
         rpcUrl: process.env.RPC_URL,
       };
 
-      // TODO: Fix wallet provider initialization - API may have changed
-      // walletProvider = await EvmWalletProvider.configureWithWallet(
-      //   cdpWalletConfig,
-      // );
-      // walletDetails = await walletProvider.getWalletDetails();
-      logger.warn("Wallet provider initialization temporarily disabled - API needs update");
+      try {
+        // Try to initialize wallet provider, but don't fail if it doesn't work
+        if (EvmWalletProvider && typeof EvmWalletProvider.configureWithWallet === 'function') {
+          walletProvider = await EvmWalletProvider.configureWithWallet(
+            cdpWalletConfig,
+          );
+          walletDetails = await walletProvider.getWalletDetails();
+          logger.info(`Wallet provider initialized: ${walletDetails.address} on ${walletDetails.network}`);
+        } else {
+          logger.warn("EvmWalletProvider.configureWithWallet is not available - continuing without wallet provider");
+        }
+      } catch (error) {
+        logger.warn("Failed to initialize wallet provider (continuing without it):", error instanceof Error ? error.message : String(error));
+        walletProvider = null; // Continue without wallet provider
+      }
     } else {
       logger.info("CDP keys not provided - blockchain features will be limited");
     }
@@ -139,34 +149,38 @@ export async function initializeAgent() {
     
     logger.info(`Loaded ${actionProviders.length} action provider(s) (some may have failed due to decorator metadata issues)`);
 
-    // Initialize AgentKit (only if wallet provider exists)
+    // Try to create manual tools if AgentKit fails
     let agentkit: any = null;
     let tools: any[] = [];
     
     // Try to initialize AgentKit with action providers if available
-    if (actionProviders.length > 0) {
+    if (actionProviders.length > 0 && walletProvider) {
       try {
-        if (walletProvider) {
-          agentkit = await AgentKit.from({
-            walletProvider,
-            actionProviders,
-          });
-        } else {
-          // For Level 1, try to create AgentKit without wallet provider
-          // This might not work, but we'll catch the error
-          logger.info("Attempting to initialize AgentKit without wallet provider for Level 1...");
-          // AgentKit requires a wallet provider, so we'll skip it for Level 1
-        }
+        logger.info(`Initializing AgentKit with ${actionProviders.length} action provider(s)...`);
+        agentkit = await AgentKit.from({
+          walletProvider,
+          actionProviders,
+        });
         
         if (agentkit) {
+          logger.info("AgentKit initialized successfully, extracting tools...");
           tools = await getLangChainTools(agentkit);
+          logger.info(`Successfully loaded ${tools.length} tools from AgentKit`);
         }
       } catch (error) {
-        logger.warn("Failed to initialize AgentKit:", error instanceof Error ? error.message : String(error));
-        logger.info("Continuing without AgentKit - agent will work in chat-only mode");
+        logger.warn("AgentKit initialization failed, will use manual tools");
       }
-    } else {
-      logger.info("No action providers loaded - agent will work in chat-only mode");
+    }
+    
+    // If no tools from AgentKit, create manual tools
+    if (tools.length === 0) {
+      try {
+        const { createManualTools } = await import("./utils/manual-tools");
+        tools = createManualTools();
+        logger.info(`Created ${tools.length} manual tools (scan_website, exa_search)`);
+      } catch (error) {
+        logger.warn("Failed to create manual tools:", error);
+      }
     }
 
     logger.info(`Loaded ${tools.length} tools for the agent`);
@@ -367,4 +381,5 @@ if (require.main === module) {
     process.exit(1);
   });
 }
+
 

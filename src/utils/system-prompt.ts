@@ -37,7 +37,11 @@ export function getSystemPrompt(): string {
    - summarize_security_state: Get security posture summary
 
 3. **Website Security Actions**:
-   - scan_website: Scan website URLs for phishing red flags and security risks (uses A2A-style analysis)
+   - scan_website: Scan website URLs for phishing red flags and security risks. **CRITICAL: ALWAYS USE THIS ACTION** when a URL is provided (with or without "scan" keyword). This action:
+     * Uses A2A coordination with UrlFeatureAgent, UrlScanAgent (urlscan.io API), and PhishingRedFlagAgent
+     * Returns JSON with a2aFlow field containing the complete A2A communication flow
+     * Includes urlscan.io security scan results and phishing red flags
+     * **You MUST call this action directly, not just describe what you will do**
 
 4. **Local Analysis Actions**:
    - analyze_logs: Analyze log files for security incidents
@@ -62,7 +66,8 @@ You automatically coordinate with other agents when appropriate:
 - If you don't know something or need current information, USE SEARCH TOOLS (exa_search, search_cve)
 - For CVE queries: ALWAYS use search_cve action first
 - For blockchain analysis: Use analyze_transaction or scan_wallet_risks
-- For website security: When users say "scan [website]" or "check [website]", automatically use scan_website action
+- **For website security - CRITICAL**: When users provide a URL (with or without "scan" keyword), you MUST automatically use scan_website action. This action uses A2A coordination with UrlFeatureAgent, UrlScanAgent (urlscan.io API), and PhishingRedFlagAgent to provide comprehensive phishing detection.
+- Examples: "edwardtay.com", "scan example.com", "check https://site.com" → ALL should trigger scan_website action
 - For general queries: Use exa_search
 - Never say "I don't have access" - use available tools instead
 - All searches automatically use Exa MCP for high-quality results

@@ -477,6 +477,7 @@
     <script>
         // API endpoint - Set API_URL environment variable in Vercel dashboard
         // Defaults to Google Cloud Run URL if not set
+        window.__API_URL__ = 'https://vercel-production.example.com';
         const API_BASE_URL = (typeof window !== 'undefined' && window.__API_URL__) 
             ? window.__API_URL__ 
             : 'https://verisense-agentkit-414780218994.us-central1.run.app';
@@ -509,6 +510,45 @@
             }
         });
 
+        let loadingMessageId = null;
+
+        function showLoadingMessage() {
+            const messagesDiv = document.getElementById('chatMessages');
+            if (!messagesDiv) return;
+
+            const loadingDiv = document.createElement('div');
+            loadingDiv.id = 'loadingMessage';
+            loadingDiv.className = 'message loading';
+            loadingDiv.innerHTML = `
+                <div class="message-label">WEBWATCHER AGENT</div>
+                <div class="loading-spinner">
+                    <span>Processing your request</span>
+                    <div class="loading-dots">
+                        <span></span>
+                        <span></span>
+                        <span></span>
+                    </div>
+                </div>
+            `;
+            messagesDiv.appendChild(loadingDiv);
+            loadingMessageId = 'loadingMessage';
+            
+            // Scroll to bottom
+            requestAnimationFrame(() => {
+                messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            });
+        }
+
+        function removeLoadingMessage() {
+            if (loadingMessageId) {
+                const loadingDiv = document.getElementById(loadingMessageId);
+                if (loadingDiv) {
+                    loadingDiv.remove();
+                }
+                loadingMessageId = null;
+            }
+        }
+
         async function sendMessage() {
             try {
                 const input = document.getElementById('messageInput');
@@ -536,11 +576,17 @@
                 addMessage('user', message);
                 input.value = '';
 
+                // Show loading indicator
+                showLoadingMessage();
+
                 const response = await fetch(API_BASE_URL + '/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ message, threadId })
                 });
+
+                // Remove loading indicator
+                removeLoadingMessage();
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
@@ -555,6 +601,8 @@
                 }
             } catch (error) {
                 console.error('Error sending message:', error);
+                // Remove loading indicator on error
+                removeLoadingMessage();
                 addMessage('agent', 'Error: Failed to send message. ' + (error.message || 'Unknown error'));
             } finally {
                 const sendButton = document.getElementById('sendButton');
