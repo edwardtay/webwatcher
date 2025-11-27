@@ -15,3 +15,9 @@ coverage/
 # Private folder (old code, tests, logs)
 private/
 
+# Vercel API compiled files (Vercel compiles these automatically)
+api/*.js
+api/*.d.ts
+api/*.js.map
+api/*.d.ts.map
+
