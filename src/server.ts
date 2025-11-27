@@ -10,9 +10,19 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
-// Root info page
+// Root info page - API only (frontend is deployed separately on Vercel)
 app.get("/", (_req, res) => {
-  res.status(200).send("WebWatcher / VeriSense agent server is running");
+  res.status(200).json({
+    service: "WebWatcher API",
+    status: "running",
+    endpoints: {
+      chat: "POST /api/chat",
+      health: "GET /healthz",
+      check: "POST /check",
+      agentCard: "GET /.well-known/agent.json"
+    },
+    frontend: "Deployed separately on Vercel"
+  });
 });
 
 type UrlFeatures = {
