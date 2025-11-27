@@ -477,10 +477,13 @@
     <script>
         // API endpoint - Set API_URL environment variable in Vercel dashboard
         // Defaults to Google Cloud Run URL if not set
-        window.__API_URL__ = 'https://vercel-production.example.com';
+        // window.__API_URL__ will be injected by Vercel build script
+        window.__API_URL__ = 'https://verisense-agentkit-414780218994.us-central1.run.app';
         const API_BASE_URL = (typeof window !== 'undefined' && window.__API_URL__) 
             ? window.__API_URL__ 
-            : 'https://verisense-agentkit-414780218994.us-central1.run.app';
+            : (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+                ? 'http://localhost:3000'
+                : 'https://verisense-agentkit-414780218994.us-central1.run.app';
         
         let threadId = 'web-' + Date.now();
 
@@ -579,6 +582,10 @@
                 // Show loading indicator
                 showLoadingMessage();
 
+                // Debug: Log API URL being used
+                console.log('API_BASE_URL:', API_BASE_URL);
+                console.log('Full endpoint:', API_BASE_URL + '/api/chat');
+                
                 const response = await fetch(API_BASE_URL + '/api/chat', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
@@ -590,7 +597,8 @@
 
                 if (!response.ok) {
                     const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                    throw new Error(errorData.error || `HTTP ${response.status}`);
+                    console.error('API Error:', response.status, errorData);
+                    throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
                 }
 
                 const data = await response.json();
@@ -601,9 +609,25 @@
                 }
             } catch (error) {
                 console.error('Error sending message:', error);
+                console.error('Error details:', {
+                    message: error.message,
+                    stack: error.stack,
+                    API_BASE_URL: API_BASE_URL
+                });
                 // Remove loading indicator on error
                 removeLoadingMessage();
-                addMessage('agent', 'Error: Failed to send message. ' + (error.message || 'Unknown error'));
+                
+                // More detailed error message
+                let errorMsg = 'Failed to send message. ';
+                if (error.message) {
+                    errorMsg += error.message;
+                } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                    errorMsg += 'Network error - cannot reach API server. Check API_URL configuration.';
+                } else {
+                    errorMsg += 'Unknown error occurred.';
+                }
+                errorMsg += ` (API: ${API_BASE_URL})`;
+                addMessage('agent', 'Error: ' + errorMsg);
             } finally {
                 const sendButton = document.getElementById('sendButton');
                 if (sendButton) {

@@ -4,6 +4,10 @@
 
 API_URL=${API_URL:-"https://verisense-agentkit-414780218994.us-central1.run.app"}
 
+# Debug output
+echo "Building frontend..."
+echo "API_URL=${API_URL}"
+
 # Inject API_URL into index.html
 if [ -n "$API_URL" ]; then
     # Create a temporary file
@@ -20,8 +24,19 @@ if [ -n "$API_URL" ]; then
         { print }
     ' index.html > "$TEMP_FILE" && mv "$TEMP_FILE" index.html
     
+    # Verify injection
+    if grep -q "window.__API_URL__ = '${API_URL}'" index.html; then
+        echo "✓ API_URL successfully injected: ${API_URL}"
+    else
+        echo "⚠ Warning: API_URL injection may have failed"
+        echo "Checking index.html..."
+        grep -A2 "API_BASE_URL" index.html | head -5
+    fi
+    
     # Cleanup
     rm -f "$TEMP_FILE" 2>/dev/null || true
+else
+    echo "⚠ Warning: API_URL is empty, using default"
 fi
 
-echo "✓ API_URL injected: ${API_URL}"
+echo "Build complete"
