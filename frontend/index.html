@@ -497,7 +497,7 @@
             ? 'http://localhost:3000'  // Localhost always uses local backend
             : (typeof window !== 'undefined' && window.__API_URL__) 
                 ? window.__API_URL__   // Vercel: use injected API_URL
-                : 'https://verisense-agentkit-414780218994.us-central1.run.app';  // Fallback to Cloud Run
+                : 'https://webwatcher.lever-labs.com';  // Fallback to Cloud Run
         
         let threadId = 'web-' + Date.now();
         

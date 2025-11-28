@@ -2,7 +2,7 @@
 # Vercel build script to inject API_URL environment variable
 # This script runs during Vercel build and injects the API_URL into index.html
 
-API_URL=${API_URL:-"https://verisense-agentkit-414780218994.us-central1.run.app"}
+API_URL=${API_URL:-"https://webwatcher.lever-labs.com"}
 
 # Debug output
 echo "Building frontend..."

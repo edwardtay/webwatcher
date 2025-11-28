@@ -796,7 +796,7 @@ app.post("/check", (req, res) => {
 
 // AgentCard definition for Verisense / other A2A registries
 const agentBaseUrl =
-  "https://verisense-agentkit-414780218994.us-central1.run.app";
+  "https://webwatcher.lever-labs.com";
 
 const agentCard = {
   id: "webwatcher-phish-checker",
