@@ -873,6 +873,11 @@ export default app;
 
 // Only start server if not in Vercel environment
 if (process.env.VERCEL !== "1") {
+  // OPTIMIZATION: Pre-initialize agent in background on server startup
+  preInitializeAgent().catch(err => {
+    logger.warn("Background agent pre-initialization failed:", err);
+  });
+
   app.listen(port, "0.0.0.0", () => {
     console.log(`[INFO] http server listening on port ${port}`);
   });
