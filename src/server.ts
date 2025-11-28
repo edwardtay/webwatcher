@@ -538,11 +538,25 @@ app.post("/api/chat", async (req, res) => {
       logger.debug('Letta not enabled - skipping learning');
     }
 
+    // Extract metadata for demo showcase
+    const hasA2ACoordination = enhancedResponse.includes('A2A') || enhancedResponse.includes('Agent Coordination') || websiteToScan !== null;
+    const hasRealTimeData = exaSearchResults.length > 0 || agentExaResults.length > 0;
+    const hasAutonomousAction = websiteToScan !== null || (riskScore && riskScore > 50);
+    
     res.json({
       response: enhancedResponse,
       chunks,
       threadId: configWithThread.configurable.thread_id,
       lettaEnabled: isLettaEnabled(), // Indicate if Letta is active
+      // Demo showcase metadata
+      metadata: {
+        a2aCoordinated: hasA2ACoordination,
+        realTimeDataUsed: hasRealTimeData,
+        autonomousAction: hasAutonomousAction,
+        toolsUsed: actionsTaken,
+        riskScore: riskScore,
+        threatDetected: threatDetected,
+      },
     });
   } catch (error) {
     logger.error("Error in chat endpoint", error);

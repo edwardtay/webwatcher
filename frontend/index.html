@@ -419,15 +419,26 @@
                         <li><strong>Letta</strong> - Autonomous learning platform for continuous self-improvement</li>
                     </ul>
                     
-                    <h3>How It Works</h3>
+                    <h3>How It Works - Autonomous & Intelligent</h3>
                     <p>
-                        WebWatcher uses intelligent agent coordination to analyze security threats. When you scan a website, 
-                        multiple specialized agents work together:
+                        WebWatcher uses <strong>autonomous multi-agent coordination</strong> to analyze security threats. 
+                        When you provide a URL (no "scan" command needed), multiple specialized agents work together automatically:
                     </p>
                     <ul>
                         <li><code>UrlFeatureAgent</code> extracts URL features and patterns</li>
+                        <li><code>UrlScanAgent</code> performs real-time security scan via urlscan.io</li>
                         <li><code>PhishingRedFlagAgent</code> analyzes features for phishing indicators</li>
-                        <li>Results are automatically coordinated via A2A protocol</li>
+                        <li>Results are automatically coordinated via <strong>A2A protocol</strong></li>
+                        <li>Every interaction is <strong>learned by Letta</strong> for continuous improvement</li>
+                    </ul>
+                    
+                    <h3>Autonomous Capabilities</h3>
+                    <ul>
+                        <li><strong>Automatic URL Detection</strong>: Type any URL - agent automatically scans (no "scan" command needed)</li>
+                        <li><strong>Real-Time Intelligence</strong>: Uses Exa MCP for latest CVE/threat data (not cached)</li>
+                        <li><strong>Multi-Agent Coordination</strong>: Automatically coordinates with specialized agents</li>
+                        <li><strong>Self-Improving</strong>: Learns from every interaction, gets smarter over time</li>
+                        <li><strong>Risk-Based Escalation</strong>: High-risk findings automatically escalate to triage agents</li>
                     </ul>
                     
                     <h3>Usage</h3>
@@ -436,8 +447,8 @@
                         Try commands like:
                     </p>
                     <ul>
-                        <li>"scan website example.com" - Scan for phishing risks</li>
-                        <li>"search CVE log4j" - Find vulnerability information</li>
+                        <li>"edwardtay.com" - Automatically scans (no "scan" command needed)</li>
+                        <li>"search CVE log4j" - Find latest vulnerability information</li>
                         <li>"analyze transaction 0x..." - Analyze blockchain transactions</li>
                     </ul>
                     
@@ -658,10 +669,31 @@
                 if (data.response) {
                     // Add Letta learning indicator to response if Letta is enabled
                     let responseText = data.response;
-                    if (data.lettaEnabled) {
-                        // Add subtle indicator that learning is happening
+                    
+                    // Add demo showcase indicators
+                    if (data.metadata) {
+                        const indicators = [];
+                        if (data.metadata.a2aCoordinated) {
+                            indicators.push('🤖 **A2A Coordination**: Multi-agent coordination activated');
+                        }
+                        if (data.metadata.realTimeDataUsed) {
+                            indicators.push('⚡ **Real-Time Data**: Latest threat intelligence retrieved');
+                        }
+                        if (data.metadata.autonomousAction) {
+                            indicators.push('🎯 **Autonomous Action**: Agent acted independently');
+                        }
+                        if (data.lettaEnabled) {
+                            indicators.push('💡 **Learning**: This interaction is being learned for continuous improvement');
+                        }
+                        
+                        if (indicators.length > 0) {
+                            responseText += '\n\n---\n**✨ Autonomous Capabilities Demonstrated:**\n' + indicators.map(i => `- ${i}`).join('\n');
+                        }
+                    } else if (data.lettaEnabled) {
+                        // Fallback: Just show Letta learning
                         responseText += '\n\n---\n*💡 This interaction is being learned by Letta for continuous improvement*';
                     }
+                    
                     addMessage('agent', responseText);
                 } else {
                     addMessage('agent', 'Error: ' + (data.error || 'Unknown error'));

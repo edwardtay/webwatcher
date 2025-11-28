@@ -1,6 +1,29 @@
-# VeriSense - Cybersecurity Agent for Blockchain
+# 🔒 WebWatcher - Autonomous Cybersecurity Agent
 
-VeriSense is an advanced cybersecurity agent built on Coinbase AgentKit that specializes in blockchain security monitoring, threat detection, and transaction analysis. It provides real-time security analytics and proactive threat detection capabilities.
+**WebWatcher** is an advanced, **autonomous cybersecurity agent** that solves real-world security threats through intelligent multi-agent coordination, real-time threat intelligence, and continuous self-improvement.
+
+## 🎯 What Makes WebWatcher Unique
+
+### **First-of-its-Kind Integration
+- **AgentKit** (Coinbase) + **VeriSense** + **Letta** (autonomous learning) + **A2A/MCP protocols**
+- The only agent combining all these technologies for truly autonomous cybersecurity
+
+### 🤖 Truly Autonomous
+- **Acts without explicit commands**: Detects URLs automatically, no "scan" keyword needed
+- **Self-improving**: Learns from every interaction via Letta
+- **Proactive**: Escalates threats automatically, coordinates agents independently
+- **Real-time intelligence**: Uses Exa MCP for latest threat data (not cached)
+
+### 🧠 Intelligent Multi-Agent Coordination
+- Automatically coordinates with specialized agents (UrlFeatureAgent, UrlScanAgent, PhishingRedFlagAgent)
+- A2A protocol enables seamless agent-to-agent communication
+- Risk-based escalation: High-risk findings → Auto-coordinate with triage/fix agents
+
+### 📈 Continuous Learning
+- Every interaction stored in Letta's long-term memory
+- Risk scoring improves over time
+- Remembers successful remediation strategies
+- Gets smarter without manual updates
 
 ## 🎯 Features
 
