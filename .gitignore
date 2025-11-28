@@ -12,7 +12,10 @@ dist/
 coverage/
 *.tsbuildinfo
 
-# Private folder (old code, tests, logs)
+# Cursor IDE files
+.cursor/
+
+# Private folder (old code, tests, logs, sensitive files)
 private/
 
 # Vercel API compiled files (Vercel compiles these automatically)
@@ -22,3 +25,13 @@ api/*.js.map
 api/*.d.ts.map
 
 .vercel
+
+# Sensitive files
+*.key
+*.pem
+*.p12
+*.pfx
+*secret*
+*private*
+credentials.json
+service-account*.json
