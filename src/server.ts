@@ -610,19 +610,24 @@ const agentCard = {
   id: "webwatcher-phish-checker",
   name: "WebWatcher Phishing URL Checker",
   description:
-    "Cybersecurity agent that inspects a URL and reports phishing red flags using an internal A2A pipeline.",
+    "Cybersecurity agent that inspects a URL and reports phishing red flags using an internal A2A pipeline. Supports MCP for semantic web search and A2A coordination for multi-agent security workflows.",
   version: "1.0.0",
   author: {
-    name: "NetWatch Team"
+    name: "NetWatch Team",
+    contact: "https://github.com/edwardtay/webwatcher"
   },
+  license: "Apache-2.0",
+  repository: "https://github.com/edwardtay/webwatcher",
+  tags: ["cybersecurity", "phishing", "url-analysis", "security", "a2a", "mcp"],
   // extra fields so registries can auto-fill Agent URL
   agentUrl: agentBaseUrl,
   baseUrl: agentBaseUrl,
+  protocols: ["A2A", "MCP", "HTTP"],
   capabilities: {
     functions: [
       {
         name: "checkUrl",
-        description: "Analyze a URL and return phishing red flags.",
+        description: "Analyze a URL and return phishing red flags using A2A coordination.",
         inputSchema: {
           type: "object",
           properties: {
@@ -639,16 +644,90 @@ const agentCard = {
             url: { type: "string" },
             verdict: { type: "string" },
             redFlags: { type: "array", items: { type: "string" } },
-            explanation: { type: "string" }
+            explanation: { type: "string" },
+            a2aFlow: { 
+              type: "string", 
+              description: "A2A coordination flow showing agent interactions" 
+            }
           }
         }
       }
-    ]
+    ],
+    a2a: {
+      version: "1.0",
+      agentType: "security_analyst",
+      discoveryEndpoint: "/.well-known/agent.json",
+      messageTypes: ["discovery", "task_request", "task_response", "status"],
+      coordinationTypes: [
+        "vulnerability_scan",
+        "incident_response",
+        "compliance_check",
+        "threat_analysis",
+        "remediation",
+        "url_analysis"
+      ],
+      canCoordinateWith: ["scanner", "triage", "fix", "governance"],
+      internalAgents: [
+        {
+          name: "UrlFeatureAgent",
+          role: "Extract URL features and structural analysis"
+        },
+        {
+          name: "UrlScanAgent",
+          role: "Call urlscan.io API for security scanning"
+        },
+        {
+          name: "PhishingRedFlagAgent",
+          role: "Analyze and flag phishing indicators"
+        }
+      ]
+    },
+    mcp: {
+      version: "2024-11-05",
+      servers: [
+        {
+          name: "exa-mcp",
+          description: "Exa AI semantic web search via MCP",
+          transport: ["stdio", "http"],
+          tools: ["exa_search"]
+        }
+      ],
+      tools: [
+        {
+          name: "exa_search",
+          description: "Search the web using Exa AI semantic search",
+          inputSchema: {
+            type: "object",
+            properties: {
+              query: { type: "string", description: "Search query" },
+              numResults: { type: "number", default: 20, description: "Number of results" }
+            },
+            required: ["query"]
+          }
+        }
+      ]
+    }
   },
   endpoints: {
     checkUrl: {
       method: "POST",
-      path: "/check"
+      path: "/check",
+      description: "A2A endpoint for URL phishing analysis"
+    },
+    chat: {
+      method: "POST",
+      path: "/api/chat",
+      description: "General chat endpoint with MCP and A2A support"
+    },
+    health: {
+      method: "GET",
+      path: "/healthz",
+      description: "Health check endpoint"
+    },
+    agentCard: {
+      method: "GET",
+      path: "/.well-known/agent.json",
+      description: "Agent discovery endpoint"
     }
   }
 };
