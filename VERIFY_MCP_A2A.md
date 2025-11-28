@@ -170,3 +170,4 @@ curl -X POST http://localhost:8080/api/chat \
 3. **Check logs** for any errors or warnings
 4. **Update configuration** if needed based on test results
 
+

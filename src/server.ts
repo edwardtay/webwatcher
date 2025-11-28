@@ -4,6 +4,9 @@ import { securityAnalytics } from "./utils/security-analytics";
 import { validateInput } from "./utils/input-validator";
 import { exaSearch } from "./utils/mcp-client";
 import * as dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
+import { dirname } from "path";
 
 dotenv.config();
 
@@ -11,6 +14,11 @@ const app = express();
 const port = Number(process.env.PORT) || 8080;
 
 app.use(express.json());
+
+// Serve static files from frontend directory for local development
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = dirname(__filename);
+app.use(express.static(path.join(__dirname, "../frontend")));
 
 // CORS middleware
 app.use((req, res, next) => {
@@ -120,19 +128,9 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
-// Root info page - API only (frontend is deployed separately on Vercel)
+// Root page - serve frontend for local development
 app.get("/", (_req, res) => {
-  res.status(200).json({
-    service: "WebWatcher API",
-    status: "running",
-    endpoints: {
-      chat: "POST /api/chat",
-      health: "GET /healthz",
-      check: "POST /check",
-      agentCard: "GET /.well-known/agent.json"
-    },
-    frontend: "Deployed separately on Vercel"
-  });
+  res.sendFile(path.join(__dirname, "../frontend/index.html"));
 });
 
 /**

@@ -1,0 +1,9 @@
+Backend API lives in repo root. /frontend is a separate client that only calls the API over HTTP. Never mix backend code into frontend or vice versa.
+
+Localhost port conflicts: never hardcode ports. Use env var PORT. If port is busy on Linux, quick fix:
+fuser -k PORT/tcp
+
+Multi-agent rule: never forget previous edits. Always read the latest file content before modifying. Never revert or recreate files based on old assumptions. Changes must be cumulative and consistent.
+
+All guides, fixes, and test notes go in /private, not inside production code.
+

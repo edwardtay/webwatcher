@@ -117,3 +117,4 @@ When you push to GitHub:
 - Check CORS settings on backend API
 - Verify backend API is accessible from Vercel deployment
 
+
