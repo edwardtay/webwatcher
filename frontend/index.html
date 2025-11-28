@@ -489,6 +489,37 @@
                 : 'https://verisense-agentkit-414780218994.us-central1.run.app';  // Fallback to Cloud Run
         
         let threadId = 'web-' + Date.now();
+        
+        // Check Letta status on page load
+        async function checkLettaStatus() {
+            try {
+                const response = await fetch(API_BASE_URL + '/api/chat', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message: 'status check', threadId: 'status-' + Date.now() })
+                });
+                
+                if (response.ok) {
+                    const data = await response.json();
+                    const lettaStatusEl = document.getElementById('lettaStatus');
+                    if (lettaStatusEl && data.lettaEnabled !== undefined) {
+                        if (data.lettaEnabled) {
+                            lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
+                            lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
+                        } else {
+                            lettaStatusEl.innerHTML = '<span style="color: #8b949e;">Letta: Not configured</span>';
+                            lettaStatusEl.title = 'Set LETTA_API_KEY in Cloud Run to enable autonomous learning';
+                        }
+                    }
+                }
+            } catch (error) {
+                // Silently fail - status check is optional
+                console.debug('Letta status check failed:', error);
+            }
+        }
+        
+        // Check status after page loads
+        setTimeout(checkLettaStatus, 1000);
 
         function openInfoModal() {
             const modal = document.getElementById('infoModal');
