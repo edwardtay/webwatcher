@@ -53,3 +53,4 @@ curl -X POST http://localhost:8080/api/chat -H "Content-Type: application/json" 
 3. Redeploy to Cloud Run
 4. Verify endpoints work
 
+

@@ -243,10 +243,18 @@ app.post("/api/chat", async (req, res) => {
       } catch (error) {
         logger.error("Agent initialization error in chat endpoint:", error);
         const errorMsg = error instanceof Error ? error.message : String(error);
-        if (errorMsg.includes("CDP_API_KEY") || errorMsg.includes("OPENAI_API_KEY")) {
+        if (errorMsg.includes("OPENAI_API_KEY") || errorMsg.includes("Required environment variables")) {
           return res.status(503).json({
             error: "Agent not initialized",
-            message: "Missing required API keys. Please check your .env file.",
+            message: "Missing required API keys in Cloud Run environment variables.",
+            details: errorMsg,
+            fix: "Set OPENAI_API_KEY in Cloud Run: gcloud run services update verisense-agentkit --region us-central1 --update-env-vars 'OPENAI_API_KEY=your_key'",
+          });
+        }
+        if (errorMsg.includes("CDP_API_KEY")) {
+          return res.status(503).json({
+            error: "Agent not initialized",
+            message: "Missing CDP API keys (optional for basic functionality).",
             details: errorMsg,
           });
         }

@@ -101,3 +101,4 @@ const API_BASE_URL = 'https://verisense-agentkit-414780218994.us-central1.run.ap
 4. Test from Vercel frontend
 5. Check browser console for detailed errors
 
+

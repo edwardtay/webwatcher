@@ -24,12 +24,15 @@ dotenv.config();
 
 /**
  * Validates that required environment variables are set
+ * Returns error message if validation fails, null if OK
  */
-function validateEnvironment(): void {
+function validateEnvironment(): string | null {
   const missingVars: string[] = [];
+  const placeholderPattern = /^(your_|your|placeholder|example|test_|xxx|xxx_)/i;
 
   // OpenAI key is always required
-  if (!process.env.OPENAI_API_KEY) {
+  const openaiKey = process.env.OPENAI_API_KEY;
+  if (!openaiKey || placeholderPattern.test(openaiKey)) {
     missingVars.push("OPENAI_API_KEY");
   }
 
@@ -40,19 +43,17 @@ function validateEnvironment(): void {
   }
 
   if (missingVars.length > 0) {
-    logger.error("Required environment variables are not set");
-    missingVars.forEach((varName) => {
-      console.error(`${varName}=your_${varName.toLowerCase()}_here`);
-    });
-    process.exit(1);
+    const errorMsg = `Required environment variables are not set: ${missingVars.join(", ")}. Please set these in Cloud Run environment variables.`;
+    logger.error(errorMsg);
+    return errorMsg;
   }
 
   if (!process.env.NETWORK_ID) {
     logger.warn("NETWORK_ID not set, defaulting to base-sepolia testnet (blockchain features may be limited)");
   }
-}
 
-validateEnvironment();
+  return null;
+}
 
 // Lazy import unified action provider
 let unifiedActionProviderFn: any;
@@ -73,6 +74,12 @@ async function loadActionProviders() {
  */
 export async function initializeAgent() {
   try {
+    // Validate environment variables before initializing
+    const validationError = validateEnvironment();
+    if (validationError) {
+      throw new Error(validationError);
+    }
+
     logger.info("Initializing WebWatcher Agent (VeriSense)...");
     logger.info("Agent uses all available tools intelligently - no levels");
 
