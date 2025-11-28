@@ -379,7 +379,7 @@
             <p>Cybersecurity Agent for Web2 and Web3</p>
             <div style="margin-top: 16px; padding: 10px 16px; background: rgba(35, 134, 54, 0.1); border: 1px solid rgba(35, 134, 54, 0.2); border-radius: 6px; text-align: center;">
                 <div style="color: #3fb950; font-size: 0.875em; font-weight: 500;">
-                    <strong>✓ MCP and A2A enabled</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <strong id="lettaStatus" style="color: #8b949e;">Letta: Checking...</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
+                    <strong>✓ MCP and A2A enabled</strong> <span id="lettaStatusContainer" style="display: none;"><span style="color: #6e7681; margin: 0 8px;">•</span> <strong id="lettaStatus"></strong></span> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
                 </div>
             </div>
         </div>
@@ -490,7 +490,7 @@
         
         let threadId = 'web-' + Date.now();
         
-        // Check Letta status on page load
+        // Check Letta status on page load (only show if enabled)
         async function checkLettaStatus() {
             try {
                 const response = await fetch(API_BASE_URL + '/api/chat', {
@@ -502,13 +502,15 @@
                 if (response.ok) {
                     const data = await response.json();
                     const lettaStatusEl = document.getElementById('lettaStatus');
-                    if (lettaStatusEl && data.lettaEnabled !== undefined) {
+                    const lettaContainer = document.getElementById('lettaStatusContainer');
+                    if (lettaStatusEl && lettaContainer && data.lettaEnabled !== undefined) {
                         if (data.lettaEnabled) {
                             lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
                             lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
+                            lettaContainer.style.display = 'inline';
                         } else {
-                            lettaStatusEl.innerHTML = '<span style="color: #8b949e;">Letta: Not configured</span>';
-                            lettaStatusEl.title = 'Set LETTA_API_KEY in Cloud Run to enable autonomous learning';
+                            // Hide Letta status if not enabled
+                            lettaContainer.style.display = 'none';
                         }
                     }
                 }
@@ -637,16 +639,18 @@
 
                 const data = await response.json();
                 
-                // Update Letta status indicator
+                // Update Letta status indicator (only show if Letta is enabled)
                 if (data.lettaEnabled !== undefined) {
                     const lettaStatusEl = document.getElementById('lettaStatus');
-                    if (lettaStatusEl) {
+                    const lettaContainer = document.getElementById('lettaStatusContainer');
+                    if (lettaStatusEl && lettaContainer) {
                         if (data.lettaEnabled) {
                             lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
                             lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
+                            lettaContainer.style.display = 'inline';
                         } else {
-                            lettaStatusEl.innerHTML = '<span style="color: #8b949e;">Letta: Not configured</span>';
-                            lettaStatusEl.title = 'Set LETTA_API_KEY in Cloud Run to enable autonomous learning';
+                            // Hide Letta status if not enabled
+                            lettaContainer.style.display = 'none';
                         }
                     }
                 }
