@@ -170,10 +170,55 @@ app.get("/", (_req, res) => {
       frontend: "Deployed separately on Vercel",
       capabilities: {
         a2a: "Agent-to-Agent coordination enabled",
-        mcp: "Model Context Protocol enabled"
+        mcp: "Model Context Protocol enabled",
+        letta: isLettaEnabled() ? "Autonomous learning enabled" : "Not configured",
+        autonomous: "Automatic URL detection, risk escalation, multi-agent coordination",
+        realTime: "Exa MCP for latest threat intelligence, urlscan.io for live scans"
+      },
+      demo: {
+        autonomousDetection: "Type any URL - agent automatically scans",
+        realTimeData: "CVE searches use latest data via Exa MCP",
+        a2aCoordination: "Multi-agent workflows activated automatically",
+        learning: isLettaEnabled() ? "Every interaction learned for improvement" : "Enable Letta for learning"
       }
     });
   }
+});
+
+// Capabilities endpoint for demo showcase
+app.get("/capabilities", (_req, res) => {
+  res.status(200).json({
+    autonomy: {
+      automaticUrlDetection: true,
+      intentRecognition: true,
+      riskBasedEscalation: true,
+      autonomousLearning: isLettaEnabled(),
+    },
+    realTimeData: {
+      exaMCP: true,
+      urlscanIO: true,
+      cveDatabase: true,
+      threatIntelligence: true,
+    },
+    coordination: {
+      a2aProtocol: true,
+      multiAgentWorkflows: true,
+      automaticDiscovery: true,
+      contextAware: true,
+    },
+    learning: {
+      lettaIntegration: isLettaEnabled(),
+      patternRecognition: isLettaEnabled(),
+      continuousImprovement: isLettaEnabled(),
+      longTermMemory: isLettaEnabled(),
+    },
+    technical: {
+      protocols: ["A2A", "MCP", "HTTP"],
+      frameworks: ["AgentKit", "LangChain", "Letta"],
+      deployment: "Cloud Run + Vercel",
+      scalability: "Auto-scaling",
+    }
+  });
 });
 
 /**
