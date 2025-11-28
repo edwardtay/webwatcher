@@ -122,9 +122,31 @@ app.get("/healthz", (_req, res) => {
   res.status(200).send("ok");
 });
 
-// Root page - serve frontend for local development
+// Root page - API info (frontend served separately on Vercel)
 app.get("/", (_req, res) => {
-  res.sendFile(path.join(process.cwd(), "frontend", "index.html"));
+  // In development, serve frontend; in production, return API info
+  if (process.env.NODE_ENV === 'development' || process.env.SERVE_FRONTEND === 'true') {
+    res.sendFile(path.join(process.cwd(), "frontend", "index.html"));
+  } else {
+    // Production: API-only endpoint
+    res.status(200).json({
+      service: "WebWatcher API",
+      status: "running",
+      agentId: "webwatcher-phish-checker",
+      protocols: ["A2A", "MCP", "HTTP"],
+      endpoints: {
+        agentCard: "GET /.well-known/agent.json",
+        chat: "POST /api/chat",
+        check: "POST /check",
+        health: "GET /healthz"
+      },
+      frontend: "Deployed separately on Vercel",
+      capabilities: {
+        a2a: "Agent-to-Agent coordination enabled",
+        mcp: "Model Context Protocol enabled"
+      }
+    });
+  }
 });
 
 /**
@@ -737,8 +759,11 @@ app.get("/.well-known/agent.json", (_req, res) => {
   res.json(agentCard);
 });
 
-// Serve static files from frontend directory for local development (AFTER all API routes)
-app.use(express.static(path.join(process.cwd(), "frontend")));
+// Serve static files from frontend directory ONLY in development (AFTER all API routes)
+// Production: Cloud Run is API-only, frontend served separately on Vercel
+if (process.env.NODE_ENV === 'development' || process.env.SERVE_FRONTEND === 'true') {
+  app.use(express.static(path.join(process.cwd(), "frontend")));
+}
 
 // Export app for Vercel serverless functions
 export default app;
