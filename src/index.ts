@@ -102,8 +102,9 @@ export async function initializeAgent() {
 
       try {
         // Try to initialize wallet provider, but don't fail if it doesn't work
-        if (EvmWalletProvider && typeof EvmWalletProvider.configureWithWallet === 'function') {
-          walletProvider = await EvmWalletProvider.configureWithWallet(
+        const walletProviderAny = EvmWalletProvider as any;
+        if (walletProviderAny && typeof walletProviderAny.configureWithWallet === 'function') {
+          walletProvider = await walletProviderAny.configureWithWallet(
             cdpWalletConfig,
           );
           walletDetails = await walletProvider.getWalletDetails();

@@ -5,7 +5,6 @@ import { validateInput } from "./utils/input-validator";
 import { exaSearch } from "./utils/mcp-client";
 import * as dotenv from "dotenv";
 import path from "path";
-import { fileURLToPath } from "url";
 import { dirname } from "path";
 
 dotenv.config();
@@ -15,12 +14,7 @@ const port = Number(process.env.PORT) || 8080;
 
 app.use(express.json());
 
-// Serve static files from frontend directory for local development
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = dirname(__filename);
-app.use(express.static(path.join(__dirname, "../frontend")));
-
-// CORS middleware
+// CORS middleware (must be before routes)
 app.use((req, res, next) => {
   res.header("Access-Control-Allow-Origin", "*");
   res.header("Access-Control-Allow-Methods", "GET, POST, OPTIONS");
@@ -130,7 +124,7 @@ app.get("/healthz", (_req, res) => {
 
 // Root page - serve frontend for local development
 app.get("/", (_req, res) => {
-  res.sendFile(path.join(__dirname, "../frontend/index.html"));
+  res.sendFile(path.join(process.cwd(), "frontend", "index.html"));
 });
 
 /**
@@ -663,6 +657,9 @@ const agentCard = {
 app.get("/.well-known/agent.json", (_req, res) => {
   res.json(agentCard);
 });
+
+// Serve static files from frontend directory for local development (AFTER all API routes)
+app.use(express.static(path.join(process.cwd(), "frontend")));
 
 // Export app for Vercel serverless functions
 export default app;

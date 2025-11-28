@@ -8,15 +8,19 @@ import { z } from "zod";
 import { logger } from "./logger";
 import { scanWebsite } from "./scan-website";
 
-// Create manual tools
+// Create manual tools - simplified to avoid deep type instantiation
 export function createManualTools(): any[] {
   return [
-    new DynamicStructuredTool({
+    {
       name: "scan_website",
       description: "Scan a website URL for phishing red flags and security risks. Uses A2A coordination with UrlFeatureAgent, UrlScanAgent (urlscan.io API), and PhishingRedFlagAgent.",
-      schema: z.object({
-        url: z.string().describe("Website URL to scan"),
-      }),
+      schema: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "Website URL to scan" },
+        },
+        required: ["url"],
+      },
       func: async ({ url }: { url: string }) => {
         try {
           return await scanWebsite(url);
@@ -25,20 +29,24 @@ export function createManualTools(): any[] {
           return JSON.stringify({ error: error instanceof Error ? error.message : String(error) });
         }
       },
-    }),
-    new DynamicStructuredTool({
+    } as any,
+    {
       name: "exa_search",
       description: "Search the web using Exa MCP server. Returns relevant search results with URLs and snippets.",
-      schema: z.object({
-        query: z.string(),
-        numResults: z.number().optional().default(20),
-      }),
+      schema: {
+        type: "object",
+        properties: {
+          query: { type: "string" },
+          numResults: { type: "number", default: 20 },
+        },
+        required: ["query"],
+      },
       func: async ({ query, numResults }: { query: string; numResults?: number }) => {
         const { exaSearch } = await import("./mcp-client");
         const results = await exaSearch(query, numResults || 20);
         return JSON.stringify({ results, query, numResults: results.length });
       },
-    }),
+    } as any,
   ];
 }
 
