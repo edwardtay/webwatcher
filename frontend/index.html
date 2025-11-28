@@ -478,15 +478,13 @@
         // API endpoint - Set API_URL environment variable in Vercel dashboard
         // Defaults to Google Cloud Run URL if not set
         // window.__API_URL__ will be injected by Vercel build script
-        // For localhost simulation: Use Cloud Run to simulate Vercel deployment
-        // To use local backend: Change 'USE_CLOUD_RUN' to false below
-        const USE_CLOUD_RUN = true; // Set to false to use localhost:3000 backend
+        // Localhost automatically uses local backend, production uses Cloud Run
         const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const API_BASE_URL = (isLocalhost && !USE_CLOUD_RUN)
-            ? 'http://localhost:3000'
+        const API_BASE_URL = isLocalhost
+            ? 'http://localhost:3000'  // Localhost always uses local backend
             : (typeof window !== 'undefined' && window.__API_URL__) 
-                ? window.__API_URL__ 
-                : 'https://verisense-agentkit-414780218994.us-central1.run.app';
+                ? window.__API_URL__   // Vercel: use injected API_URL
+                : 'https://verisense-agentkit-414780218994.us-central1.run.app';  // Fallback to Cloud Run
         
         let threadId = 'web-' + Date.now();
 
