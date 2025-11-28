@@ -48,11 +48,17 @@ async function callUrlScanAgent(url: string): Promise<any> {
 
     logger.info(`[A2A] UrlScanAgent: Scan submitted, UUID: ${scanUuid}`);
 
-    // Poll for results (urlscan.io takes a few seconds to process)
+    // OPTIMIZATION: Use exponential backoff for faster initial response
+    // Start with shorter wait times, increase if needed
     let attempts = 0;
     const maxAttempts = 10;
+    const initialWaitMs = 1000; // Start with 1 second instead of 2
+    const maxWaitMs = 5000; // Cap at 5 seconds
+    
     while (attempts < maxAttempts) {
-      await new Promise((resolve) => setTimeout(resolve, 2000)); // Wait 2 seconds
+      // Exponential backoff: 1s, 1.5s, 2s, 3s, 4s, 5s...
+      const waitTime = Math.min(initialWaitMs * Math.pow(1.5, attempts), maxWaitMs);
+      await new Promise((resolve) => setTimeout(resolve, waitTime));
 
       const resultResponse = await fetch(`https://urlscan.io/api/v1/result/${scanUuid}/`, {
         headers: {

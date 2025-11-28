@@ -94,6 +94,28 @@ async function loadAgentModules() {
 // Initialize agent (singleton)
 let agentInstance: any = null;
 let agentInitialized = false;
+let agentInitPromise: Promise<any> | null = null;
+
+// OPTIMIZATION: Pre-initialize agent on server startup (non-blocking)
+async function preInitializeAgent() {
+  if (!agentInitPromise && !agentInitialized) {
+    agentInitPromise = (async () => {
+      try {
+        logger.info("Pre-initializing agent in background...");
+        await loadAgentModules();
+        if (initializeAgent) {
+          agentInstance = await initializeAgent();
+          agentInitialized = true;
+          logger.info("✓ Agent pre-initialized successfully");
+        }
+      } catch (error) {
+        logger.warn("Agent pre-initialization failed (will initialize on first request):", error);
+        agentInitPromise = null; // Allow retry on first request
+      }
+    })();
+  }
+  return agentInitPromise;
+}
 
 async function getAgent() {
   if (!initializeAgent) {
@@ -220,28 +242,35 @@ app.post("/api/chat", async (req, res) => {
       sanitizedMessage.split(' ').length <= 5
     );
     
+    // OPTIMIZATION: Parallelize Exa search and agent initialization
     let exaSearchResults: Array<{ title: string; url: string; text: string; snippet?: string; source?: string }> = [];
-    if (isSearchQuery) {
-      try {
-        logger.info(`Detected search query, attempting Exa search: ${sanitizedMessage}`);
-        exaSearchResults = await exaSearch(sanitizedMessage, 5);
-        const mcpCount = exaSearchResults.filter((r: any) => r.source === "MCP").length;
-        const apiCount = exaSearchResults.filter((r: any) => r.source === "API").length;
-        logger.info(`Exa search returned ${exaSearchResults.length} results (${mcpCount} from MCP, ${apiCount} from API)`);
-      } catch (error) {
-        logger.warn("Exa search failed, continuing with agent response", error);
-      }
-    }
+    const exaSearchPromise = isSearchQuery 
+      ? (async () => {
+          try {
+            logger.info(`Detected search query, attempting Exa search: ${sanitizedMessage}`);
+            const results = await exaSearch(sanitizedMessage, 5);
+            const mcpCount = results.filter((r: any) => r.source === "MCP").length;
+            const apiCount = results.filter((r: any) => r.source === "API").length;
+            logger.info(`Exa search returned ${results.length} results (${mcpCount} from MCP, ${apiCount} from API)`);
+            return results;
+          } catch (error) {
+            logger.warn("Exa search failed, continuing with agent response", error);
+            return [];
+          }
+        })()
+      : Promise.resolve([]);
 
-    // Ensure modules are loaded
-    if (!HumanMessage || !initializeAgent) {
-      await loadAgentModules();
-    }
-    
-    if (!agentInitialized) {
-      try {
-        await getAgent();
-      } catch (error) {
+    // OPTIMIZATION: Load modules and initialize agent in parallel with Exa search
+    const agentInitPromise = (async () => {
+      // Ensure modules are loaded
+      if (!HumanMessage || !initializeAgent) {
+        await loadAgentModules();
+      }
+      
+      if (!agentInitialized) {
+        try {
+          await getAgent();
+        } catch (error) {
         logger.error("Agent initialization error in chat endpoint:", error);
         const errorMsg = error instanceof Error ? error.message : String(error);
         if (errorMsg.includes("OPENAI_API_KEY") || errorMsg.includes("Required environment variables")) {
@@ -259,15 +288,49 @@ app.post("/api/chat", async (req, res) => {
             details: errorMsg,
           });
         }
+          return res.status(503).json({
+            error: "Agent not initialized",
+            message: "Agent initialization failed. Please check server logs for details.",
+            details: errorMsg,
+          });
+        }
+      }
+      return await getAgent();
+    })();
+
+    // OPTIMIZATION: Wait for both Exa search and agent initialization in parallel
+    let agentData;
+    try {
+      const [exaResults, agentResult] = await Promise.all([exaSearchPromise, agentInitPromise]);
+      exaSearchResults = exaResults;
+      agentData = agentResult;
+    } catch (error) {
+      // Handle agent initialization errors
+      logger.error("Agent initialization error in chat endpoint:", error);
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      if (errorMsg.includes("OPENAI_API_KEY") || errorMsg.includes("Required environment variables")) {
         return res.status(503).json({
           error: "Agent not initialized",
-          message: "Agent initialization failed. Please check server logs for details.",
+          message: "Missing required API keys in Cloud Run environment variables.",
+          details: errorMsg,
+          fix: "Set OPENAI_API_KEY in Cloud Run: gcloud run services update verisense-agentkit --region us-central1 --update-env-vars 'OPENAI_API_KEY=your_key'",
+        });
+      }
+      if (errorMsg.includes("CDP_API_KEY")) {
+        return res.status(503).json({
+          error: "Agent not initialized",
+          message: "Missing CDP API keys (optional for basic functionality).",
           details: errorMsg,
         });
       }
+      return res.status(503).json({
+        error: "Agent not initialized",
+        message: "Agent initialization failed. Please check server logs for details.",
+        details: errorMsg,
+      });
     }
-
-    const { agent, config } = await getAgent();
+    
+    const { agent, config } = agentData;
     
     if (!HumanMessage) {
       await loadAgentModules();
