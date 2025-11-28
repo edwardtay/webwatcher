@@ -521,14 +521,22 @@ app.post("/api/chat", async (req, res) => {
                           enhancedResponse.toLowerCase().includes('vulnerability');
 
     // Store interaction in Letta for learning (non-blocking)
-    learnFromInteraction(sanitizedMessage, enhancedResponse, {
-      actionsTaken,
-      riskScore,
-      threatDetected,
-    }).catch(err => {
-      // Don't fail the request if learning fails
-      logger.debug('Letta learning failed (non-critical):', err);
-    });
+    // Log when Letta learning is actually happening
+    if (isLettaEnabled()) {
+      logger.info('🤖 Letta: Learning from interaction - storing in memory');
+      learnFromInteraction(sanitizedMessage, enhancedResponse, {
+        actionsTaken,
+        riskScore,
+        threatDetected,
+      }).then(() => {
+        logger.info('✓ Letta: Interaction stored successfully');
+      }).catch(err => {
+        // Don't fail the request if learning fails
+        logger.warn('Letta learning failed (non-critical):', err);
+      });
+    } else {
+      logger.debug('Letta not enabled - skipping learning');
+    }
 
     res.json({
       response: enhancedResponse,

@@ -379,7 +379,7 @@
             <p>Cybersecurity Agent for Web2 and Web3</p>
             <div style="margin-top: 16px; padding: 10px 16px; background: rgba(35, 134, 54, 0.1); border: 1px solid rgba(35, 134, 54, 0.2); border-radius: 6px; text-align: center;">
                 <div style="color: #3fb950; font-size: 0.875em; font-weight: 500;">
-                    <strong>✓ MCP and A2A enabled</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
+                    <strong>✓ MCP and A2A enabled</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <strong id="lettaStatus" style="color: #8b949e;">Letta: Checking...</strong> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
                 </div>
             </div>
         </div>
@@ -406,6 +406,7 @@
                         <li><strong>Wallet Risk Scanning</strong> - Scan wallet addresses for security threats and anomalies</li>
                         <li><strong>Security State Summaries</strong> - Get comprehensive security posture assessments</li>
                         <li><strong>Advanced Web Search</strong> - Powered by Exa MCP for high-quality, semantic search results</li>
+                        <li><strong>Letta Integration</strong> - Autonomous learning and self-improvement with long-term memory</li>
                     </ul>
                     
                     <h3>Technology Stack</h3>
@@ -415,6 +416,7 @@
                         <li><strong>MCP (Model Context Protocol)</strong> - For tool integration and agent coordination</li>
                         <li><strong>A2A Coordination</strong> - Automatic agent-to-agent communication for complex tasks</li>
                         <li><strong>Exa Search</strong> - Advanced semantic web search capabilities</li>
+                        <li><strong>Letta</strong> - Autonomous learning platform for continuous self-improvement</li>
                     </ul>
                     
                     <h3>How It Works</h3>
@@ -603,8 +605,29 @@
                 }
 
                 const data = await response.json();
+                
+                // Update Letta status indicator
+                if (data.lettaEnabled !== undefined) {
+                    const lettaStatusEl = document.getElementById('lettaStatus');
+                    if (lettaStatusEl) {
+                        if (data.lettaEnabled) {
+                            lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
+                            lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
+                        } else {
+                            lettaStatusEl.innerHTML = '<span style="color: #8b949e;">Letta: Not configured</span>';
+                            lettaStatusEl.title = 'Set LETTA_API_KEY in Cloud Run to enable autonomous learning';
+                        }
+                    }
+                }
+                
                 if (data.response) {
-                    addMessage('agent', data.response);
+                    // Add Letta learning indicator to response if Letta is enabled
+                    let responseText = data.response;
+                    if (data.lettaEnabled) {
+                        // Add subtle indicator that learning is happening
+                        responseText += '\n\n---\n*💡 This interaction is being learned by Letta for continuous improvement*';
+                    }
+                    addMessage('agent', responseText);
                 } else {
                     addMessage('agent', 'Error: ' + (data.error || 'Unknown error'));
                 }
