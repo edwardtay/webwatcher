@@ -19,6 +19,7 @@ import * as readline from "readline";
 import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
 import { getSystemPrompt } from "./utils/system-prompt";
+import { initializeLetta } from "./utils/letta-client";
 
 dotenv.config();
 
@@ -82,6 +83,12 @@ export async function initializeAgent() {
 
     logger.info("Initializing WebWatcher Agent (VeriSense)...");
     logger.info("Agent uses all available tools intelligently - no levels");
+
+    // Initialize Letta for long-term memory and self-improvement (optional)
+    const lettaEnabled = await initializeLetta();
+    if (lettaEnabled) {
+      logger.info("✓ Letta integration active - autonomous learning enabled");
+    }
 
     // Initialize LLM
     const llm = new ChatOpenAI({

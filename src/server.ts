@@ -3,6 +3,7 @@ import { logger } from "./utils/logger";
 import { securityAnalytics } from "./utils/security-analytics";
 import { validateInput } from "./utils/input-validator";
 import { exaSearch } from "./utils/mcp-client";
+import { learnFromInteraction, isLettaEnabled, queryLettaAgent, autonomousAction } from "./utils/letta-client";
 import * as dotenv from "dotenv";
 import path from "path";
 import { dirname } from "path";
@@ -440,10 +441,37 @@ app.post("/api/chat", async (req, res) => {
       
     }
 
+    // Learn from this interaction (Letta integration for self-improvement)
+    // Extract context for learning: actions taken, risk scores, threat detection
+    const actionsTaken: string[] = [];
+    if (agentExaResults.length > 0) actionsTaken.push('exa_search');
+    if (websiteToScan) actionsTaken.push('scan_website');
+    if (fullResponse.includes('risk') || fullResponse.includes('threat')) {
+      actionsTaken.push('threat_analysis');
+    }
+
+    // Extract risk score from response if present
+    const riskScoreMatch = enhancedResponse.match(/risk[_\s]?score[:\s]+(\d+)/i);
+    const riskScore = riskScoreMatch ? parseInt(riskScoreMatch[1]) : undefined;
+    const threatDetected = enhancedResponse.toLowerCase().includes('threat') || 
+                          enhancedResponse.toLowerCase().includes('risk') ||
+                          enhancedResponse.toLowerCase().includes('vulnerability');
+
+    // Store interaction in Letta for learning (non-blocking)
+    learnFromInteraction(sanitizedMessage, enhancedResponse, {
+      actionsTaken,
+      riskScore,
+      threatDetected,
+    }).catch(err => {
+      // Don't fail the request if learning fails
+      logger.debug('Letta learning failed (non-critical):', err);
+    });
+
     res.json({
       response: enhancedResponse,
       chunks,
       threadId: configWithThread.configurable.thread_id,
+      lettaEnabled: isLettaEnabled(), // Indicate if Letta is active
     });
   } catch (error) {
     logger.error("Error in chat endpoint", error);
