@@ -651,12 +651,7 @@ app.post("/api/resolve-ens", async (req, res) => {
 });
 
 /**
- * Wallet Analysis endpoint - Analyze wallet using multiple data providers
- * 
- * NOTE: This is a basic implementation. Full implementation requires:
- * - Integration modules for Moralis, Blockscout, Alchemy, etc.
- * - API keys for these services
- * - See web3base-cursor repo for full implementation with all integrations
+ * Wallet Analysis endpoint - Analyze wallet using Moralis, Blockscout, Alchemy, Thirdweb, Revoke.cash, Nansen, MetaSleuth, and Passport
  */
 app.post("/api/wallet/analyze", async (req, res) => {
   try {
@@ -671,15 +666,187 @@ app.post("/api/wallet/analyze", async (req, res) => {
       return res.status(400).json({ error: "Invalid Ethereum address format" });
     }
 
-    // Basic response - can be enhanced later with integrations
-    // For full implementation, see web3base-cursor/src/server.ts lines 288-449
-    res.status(200).json({
+    // Fetch data from Moralis, Blockscout, Alchemy, Thirdweb, Revoke.cash, Nansen, MetaSleuth, and Passport
+    const [moralisData, blockscoutData, alchemyData, thirdwebData, revokeData, nansenData, metasleuthData, passportData] = await Promise.allSettled([
+      (async () => {
+        try {
+          const { analyzeWalletSecurity, getWalletTransactions } = await import('./integrations/moralis');
+          const [analysis, transactions] = await Promise.all([
+            analyzeWalletSecurity(address),
+            getWalletTransactions(address, '0x1', 10),
+          ]);
+          return { analysis, transactions };
+        } catch (e) {
+          logger.warn('Moralis integration failed:', e);
+          return { error: 'Moralis integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getComprehensiveWalletData } = await import('./integrations/blockscout');
+          return await getComprehensiveWalletData(address);
+        } catch (e) {
+          logger.warn('Blockscout integration failed:', e);
+          return { error: 'Blockscout integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getComprehensiveWalletMetrics } = await import('./integrations/alchemy');
+          return await getComprehensiveWalletMetrics(address);
+        } catch (e) {
+          logger.warn('Alchemy integration failed:', e);
+          return { error: 'Alchemy integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getWalletPortfolio } = await import('./integrations/thirdweb');
+          return await getWalletPortfolio(address);
+        } catch (e) {
+          logger.warn('Thirdweb integration failed:', e);
+          return { error: 'Thirdweb integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getSecurityRecommendations, getApprovalSummary } = await import('./integrations/revoke');
+          const [recommendations, summary] = await Promise.all([
+            getSecurityRecommendations(address, 1),
+            getApprovalSummary(address, 1),
+          ]);
+          return { recommendations, summary };
+        } catch (e) {
+          logger.warn('Revoke.cash integration failed:', e);
+          return { error: 'Revoke.cash integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getWalletIntelligence } = await import('./integrations/nansen');
+          return await getWalletIntelligence(address);
+        } catch (e) {
+          logger.warn('Nansen integration failed:', e);
+          return { error: 'Nansen integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getComprehensiveAnalysis } = await import('./integrations/metasleuth');
+          return await getComprehensiveAnalysis(address, 'ethereum');
+        } catch (e) {
+          logger.warn('MetaSleuth integration failed:', e);
+          return { error: 'MetaSleuth integration not available' };
+        }
+      })(),
+      (async () => {
+        try {
+          const { getPassportAnalysis } = await import('./integrations/passport');
+          return await getPassportAnalysis(address);
+        } catch (e) {
+          logger.warn('Passport integration failed:', e);
+          return { error: 'Passport integration not available' };
+        }
+      })(),
+    ]);
+
+    const result: any = {
       success: true,
       address,
       timestamp: new Date().toISOString(),
-      message: "Wallet analysis endpoint - basic implementation",
-      note: "Full implementation with Moralis, Blockscout, Alchemy, Thirdweb, Revoke.cash, Nansen, MetaSleuth, and Passport integrations can be added. See web3base-cursor repo for reference."
-    });
+    };
+
+    // Merge Moralis data
+    if (moralisData.status === 'fulfilled') {
+      result.moralis = moralisData.value;
+      
+      // Learn patterns from transactions
+      if (moralisData.value.transactions && moralisData.value.transactions.length > 0) {
+        try {
+          const { learnFromTransactions, getPatternSummary } = await import('./utils/pattern-learner');
+          learnFromTransactions(address, moralisData.value.transactions);
+          result.patternSummary = getPatternSummary(address);
+        } catch (error) {
+          logger.warn('Pattern learning failed:', error);
+        }
+      }
+    } else {
+      logger.warn('Moralis data fetch failed:', moralisData.reason);
+      result.moralis = { error: 'Failed to fetch Moralis data' };
+    }
+
+    // Merge Blockscout data
+    if (blockscoutData.status === 'fulfilled') {
+      result.blockscout = blockscoutData.value;
+    } else {
+      logger.warn('Blockscout data fetch failed:', blockscoutData.reason);
+      result.blockscout = { error: 'Failed to fetch Blockscout data' };
+    }
+
+    // Merge Alchemy data
+    if (alchemyData.status === 'fulfilled') {
+      result.alchemy = alchemyData.value;
+    } else {
+      logger.warn('Alchemy data fetch failed:', alchemyData.reason);
+      result.alchemy = { error: 'Failed to fetch Alchemy data' };
+    }
+
+    // Merge Thirdweb data
+    if (thirdwebData.status === 'fulfilled') {
+      result.thirdweb = thirdwebData.value;
+    } else {
+      logger.warn('Thirdweb data fetch failed:', thirdwebData.reason);
+      result.thirdweb = { error: 'Failed to fetch Thirdweb data' };
+    }
+
+    // Merge Revoke.cash data
+    if (revokeData.status === 'fulfilled') {
+      result.revoke = revokeData.value;
+    } else {
+      logger.warn('Revoke.cash data fetch failed:', revokeData.reason);
+      result.revoke = { error: 'Failed to fetch Revoke.cash data' };
+    }
+
+    // Merge Nansen data
+    if (nansenData.status === 'fulfilled') {
+      result.nansen = nansenData.value;
+    } else {
+      logger.warn('Nansen data fetch failed:', nansenData.reason);
+      result.nansen = { error: 'Failed to fetch Nansen data' };
+    }
+
+    // Merge MetaSleuth data
+    if (metasleuthData.status === 'fulfilled') {
+      result.metasleuth = metasleuthData.value;
+    } else {
+      logger.warn('MetaSleuth data fetch failed:', metasleuthData.reason);
+      result.metasleuth = { error: 'Failed to fetch MetaSleuth data' };
+    }
+
+    // Merge Passport data
+    if (passportData.status === 'fulfilled') {
+      result.passport = passportData.value;
+    } else {
+      logger.warn('Passport data fetch failed:', passportData.reason);
+      result.passport = { error: 'Failed to fetch Passport data' };
+    }
+
+    // Check for threat intelligence
+    try {
+      const { checkWalletThreats, getThreatSummary } = await import('./utils/threat-intelligence');
+      const transactions = result.moralis?.transactions || result.blockscout?.transactions || [];
+      const approvals = result.revoke?.summary?.totalApprovals || 0;
+      
+      const threats = await checkWalletThreats(address, transactions, approvals > 0 ? [{}] : []);
+      result.threats = {
+        active: threats,
+        summary: getThreatSummary()
+      };
+    } catch (error) {
+      logger.warn('Threat intelligence check failed:', error);
+    }
+
+    res.status(200).json(result);
   } catch (error: any) {
     logger.error('Wallet analysis error:', error);
     res.status(500).json({ 
