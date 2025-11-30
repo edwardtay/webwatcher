@@ -4,6 +4,7 @@ import { securityAnalytics } from "./utils/security-analytics";
 import { validateInput } from "./utils/input-validator";
 import { exaSearch } from "./utils/mcp-client";
 import { learnFromInteraction, isLettaEnabled, queryLettaAgent, autonomousAction } from "./utils/letta-client";
+import { resolveENS, isValidENS } from "./utils/ens-resolver";
 import * as dotenv from "dotenv";
 import path from "path";
 import { dirname } from "path";
@@ -165,7 +166,9 @@ app.get("/", (_req, res) => {
         agentCard: "GET /.well-known/agent.json",
         chat: "POST /api/chat",
         check: "POST /check",
-        health: "GET /healthz"
+        health: "GET /healthz",
+        resolveEns: "POST /api/resolve-ens",
+        walletAnalyze: "POST /api/wallet/analyze"
       },
       frontend: "Deployed separately on Vercel",
       capabilities: {
@@ -608,6 +611,80 @@ app.post("/api/chat", async (req, res) => {
     res.status(500).json({
       error: "Failed to process chat message",
       message: error instanceof Error ? error.message : String(error),
+    });
+  }
+});
+
+/**
+ * ENS Resolution endpoint
+ */
+app.post("/api/resolve-ens", async (req, res) => {
+  try {
+    const { name } = req.body;
+
+    if (!name || typeof name !== "string") {
+      return res.status(400).json({ error: "ENS name is required" });
+    }
+
+    const resolvedAddress = await resolveENS(name);
+
+    if (resolvedAddress) {
+      res.status(200).json({
+        success: true,
+        name,
+        address: resolvedAddress
+      });
+    } else {
+      res.status(404).json({
+        success: false,
+        error: "Could not resolve ENS name"
+      });
+    }
+  } catch (error: any) {
+    logger.error('ENS resolution error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Failed to resolve ENS name',
+      message: error.message
+    });
+  }
+});
+
+/**
+ * Wallet Analysis endpoint - Analyze wallet using multiple data providers
+ * 
+ * NOTE: This is a basic implementation. Full implementation requires:
+ * - Integration modules for Moralis, Blockscout, Alchemy, etc.
+ * - API keys for these services
+ * - See web3base-cursor repo for full implementation with all integrations
+ */
+app.post("/api/wallet/analyze", async (req, res) => {
+  try {
+    const { address } = req.body;
+
+    if (!address || typeof address !== "string") {
+      return res.status(400).json({ error: "Wallet address is required" });
+    }
+
+    // Validate Ethereum address format
+    if (!/^0x[a-fA-F0-9]{40}$/.test(address)) {
+      return res.status(400).json({ error: "Invalid Ethereum address format" });
+    }
+
+    // Basic response - can be enhanced later with integrations
+    // For full implementation, see web3base-cursor/src/server.ts lines 288-449
+    res.status(200).json({
+      success: true,
+      address,
+      timestamp: new Date().toISOString(),
+      message: "Wallet analysis endpoint - basic implementation",
+      note: "Full implementation with Moralis, Blockscout, Alchemy, Thirdweb, Revoke.cash, Nansen, MetaSleuth, and Passport integrations can be added. See web3base-cursor repo for reference."
+    });
+  } catch (error: any) {
+    logger.error('Wallet analysis error:', error);
+    res.status(500).json({ 
+      error: 'Failed to analyze wallet',
+      message: error.message 
     });
   }
 });
