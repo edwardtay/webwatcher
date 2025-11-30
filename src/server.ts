@@ -1014,6 +1014,183 @@ function phishingRedFlagAgent(features: UrlFeatures) {
   };
 }
 
+/**
+ * Quest Verification endpoint - Verify protocol interactions and award passes
+ */
+app.post("/api/quest/verify", async (req, res) => {
+  try {
+    const { address } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ 
+        success: false,
+        error: "Wallet address is required" 
+      });
+    }
+
+    // Normalize address to lowercase for consistency
+    const normalizedAddress = address.toLowerCase().trim();
+
+    // Validate address format (accept lowercase hex)
+    if (!/^0x[a-f0-9]{40}$/.test(normalizedAddress)) {
+      return res.status(400).json({ 
+        success: false,
+        error: `Invalid Ethereum address format: ${address}. Expected 0x followed by 40 hex characters.` 
+      });
+    }
+
+    logger.info(`Quest verification requested for: ${normalizedAddress}`);
+
+    // Import quest verifier
+    const { verifyAllQuests } = await import("./utils/quest-verifier");
+    
+    // Verify all quests
+    const questPass = await verifyAllQuests(normalizedAddress);
+
+    logger.info(`Quest verification complete: ${questPass.totalCompleted}/5 quests completed for ${normalizedAddress}`);
+
+    return res.status(200).json({
+      success: true,
+      data: questPass,
+    });
+  } catch (error) {
+    logger.error("Quest verification error:", error);
+    const errorMessage = (error as any)?.message || "Failed to verify quests";
+    return res.status(500).json({
+      success: false,
+      error: errorMessage,
+      message: errorMessage, // Include both for compatibility
+    });
+  }
+});
+
+/**
+ * Mint Web3Base Quest NFT on ZetaChain testnet
+ */
+app.post("/api/quest/mint-nft", async (req, res) => {
+  try {
+    const { address } = req.body;
+
+    if (!address) {
+      return res.status(400).json({ 
+        success: false,
+        error: "Wallet address is required" 
+      });
+    }
+
+    // Normalize address to lowercase
+    const normalizedAddress = address.toLowerCase().trim();
+
+    // Validate address format
+    if (!/^0x[a-f0-9]{40}$/.test(normalizedAddress)) {
+      return res.status(400).json({ 
+        success: false,
+        error: `Invalid Ethereum address format: ${address}` 
+      });
+    }
+
+    logger.info(`NFT mint requested for: ${normalizedAddress}`);
+
+    // Verify that user has earned the pass
+    const { verifyAllQuests } = await import("./utils/quest-verifier");
+    const questPass = await verifyAllQuests(normalizedAddress);
+
+    if (!questPass.passAwarded) {
+      return res.status(403).json({
+        success: false,
+        error: "Quest pass not earned. Complete at least 3 quests to mint NFT.",
+      });
+    }
+
+    // Prepare NFT minting transaction for ZetaChain testnet
+    const ZETACHAIN_TESTNET_RPC = "https://zeta-chain-testnet.drpc.org";
+    const ZETACHAIN_TESTNET_CHAIN_ID = 7001; // ZetaChain Testnet chain ID
+    const NFT_CONTRACT_ADDRESS = process.env.WEB3BASE_NFT_CONTRACT || "";
+
+    if (!NFT_CONTRACT_ADDRESS) {
+      logger.warn("NFT contract address not configured");
+      return res.status(200).json({
+        success: true,
+        message: "Quest pass verified. NFT minting will be available once contract is deployed.",
+        data: {
+          address: normalizedAddress,
+          questPass: questPass,
+          nftMinted: false,
+          network: "ZetaChain Testnet",
+          chainId: ZETACHAIN_TESTNET_CHAIN_ID,
+          faucetUrl: "https://zetachain.faucetme.pro/",
+          note: "NFT contract address needs to be configured. Get testnet tokens from the faucet.",
+        },
+      });
+    }
+
+    // Get nonce for the transaction
+    let nonce: number;
+    try {
+      const nonceResponse = await fetch(ZETACHAIN_TESTNET_RPC, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          jsonrpc: "2.0",
+          method: "eth_getTransactionCount",
+          params: [normalizedAddress, "latest"],
+          id: 1,
+        }),
+      });
+      
+      if (nonceResponse.ok) {
+        const nonceData: any = await nonceResponse.json();
+        nonce = parseInt(nonceData.result || "0x0", 16);
+      } else {
+        nonce = 0;
+      }
+    } catch (err) {
+      logger.warn("Failed to get nonce, using 0");
+      nonce = 0;
+    }
+
+    // Prepare mint transaction data
+    // Using questMint(address) function from Web3BaseQuestNFT contract
+    // Function signature: keccak256("questMint(address)") = 0x1c42a4d1
+    const MINT_FUNCTION_SIGNATURE = "0x1c42a4d1"; // questMint(address) - public mint function
+    // Pad address to 32 bytes (64 hex chars)
+    const paddedAddress = normalizedAddress.slice(2).toLowerCase().padStart(64, "0");
+    const transactionData = MINT_FUNCTION_SIGNATURE + paddedAddress;
+
+    logger.info(`NFT mint transaction prepared for ${normalizedAddress} on ZetaChain testnet - ${questPass.totalCompleted}/5 quests completed`);
+
+    return res.status(200).json({
+      success: true,
+      message: "NFT minting transaction prepared",
+      data: {
+        address: normalizedAddress,
+        questPass: questPass,
+        network: "ZetaChain Testnet",
+        chainId: ZETACHAIN_TESTNET_CHAIN_ID,
+        rpcUrl: ZETACHAIN_TESTNET_RPC,
+        contractAddress: NFT_CONTRACT_ADDRESS,
+        transaction: {
+          to: NFT_CONTRACT_ADDRESS,
+          data: transactionData,
+          value: "0x0", // No ETH needed for minting
+          gas: "0x186a0", // ~100,000 gas (standard for NFT mint)
+        },
+        nonce: nonce,
+        faucetUrl: "https://zetachain.faucetme.pro/",
+        note: "Sign this transaction with MetaMask to mint your NFT",
+      },
+    });
+  } catch (error) {
+    logger.error("NFT mint error:", error);
+    const errorMessage = (error as any)?.message || "Failed to mint NFT";
+    return res.status(500).json({
+      success: false,
+      error: errorMessage,
+      message: errorMessage,
+    });
+  }
+});
+
 // A2A-style endpoint: URL features agent -> phishing red-flag agent
 app.post("/check", (req, res) => {
   const { url } = req.body || {};
