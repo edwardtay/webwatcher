@@ -15,8 +15,9 @@ coverage/
 # Cursor IDE files
 .cursor/
 
-# Backend folder (internal backend files, not for public repo)
-backend/
+# Backend build artifacts
+backend/dist/
+backend/node_modules/
 
 # Private folder (old code, tests, logs, sensitive files)
 private/

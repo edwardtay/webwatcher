@@ -1,0 +1,29 @@
+{
+  "server": {
+    "port": 8080,
+    "host": "0.0.0.0",
+    "cors": {
+      "enabled": true,
+      "origins": ["*"]
+    }
+  },
+  "security": {
+    "rateLimit": {
+      "enabled": false,
+      "maxRequests": 100,
+      "windowMs": 60000
+    },
+    "apiKeys": {
+      "required": false
+    }
+  },
+  "logging": {
+    "level": "debug",
+    "format": "json"
+  },
+  "features": {
+    "comprehensiveScan": true,
+    "incidentReports": true,
+    "feedbackLoop": true
+  }
+}
