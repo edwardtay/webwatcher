@@ -1,0 +1,17 @@
+{
+  "name": "webwatcher-monorepo",
+  "version": "2.0.0",
+  "description": "WebWatcher Monorepo - Cybersecurity Agent Platform",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:backend": "cd apps/backend && npm run dev:server",
+    "build:backend": "cd apps/backend && npm run build",
+    "start:backend": "cd apps/backend && npm start"
+  },
+  "author": "WebWatcher Team",
+  "license": "Apache-2.0"
+}
