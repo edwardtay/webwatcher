@@ -1,6 +1,7 @@
 {
   "version": 2,
-  "buildCommand": "bash _vercel_build.sh",
-  "outputDirectory": "dist"
+  "buildCommand": "mkdir -p dist && cp index.html dist/ && cp -r js dist/ 2>/dev/null || true",
+  "outputDirectory": "dist",
+  "installCommand": "echo 'No dependencies to install'"
 }
 
