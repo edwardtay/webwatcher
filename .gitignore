@@ -1,23 +1,38 @@
+# Dependencies
 node_modules/
+
+# Build outputs
 dist/
+build/
+.next/
+*.tsbuildinfo
+
+# Environment
 .env
 .env.local
+
+# Logs
 *.log
+
+# OS
 .DS_Store
 *.swp
 *.swo
 *~
+
+# IDEs
 .vscode/
 .idea/
-coverage/
-*.tsbuildinfo
-
-# Cursor IDE files
 .cursor/
 
-# Backend build artifacts
-backend/dist/
-backend/node_modules/
+# Testing
+coverage/
+
+# App-specific build artifacts
+apps/*/dist/
+apps/*/node_modules/
+packages/*/dist/
+packages/*/node_modules/
 
 # Private folder (old code, tests, logs, sensitive files)
 private/

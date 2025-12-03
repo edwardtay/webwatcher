@@ -24,7 +24,7 @@ npm start
 
 This backend is automatically deployed to Cloud Run when pushed to the main branch.
 
-The Cloud Build configuration (`../cloudbuild.yaml`) builds from this subfolder only, ensuring:
+The Cloud Build configuration (`../../infra/cloudrun/cloudbuild.yaml`) builds from this subfolder only, ensuring:
 - Faster builds
 - Lower memory usage
 - No frontend/docs/scripts included
