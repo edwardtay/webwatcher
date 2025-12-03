@@ -367,7 +367,7 @@ export async function checkHaveIBeenPwned(email: string): Promise<BreachData> {
       throw new Error(`HIBP API error: ${response.status} ${response.statusText}`);
     }
 
-    const breaches: any[] = await response.json();
+    const breaches = (await response.json()) as any[];
     
     // Calculate risk score based on breaches
     const totalBreaches = breaches.length;

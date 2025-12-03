@@ -396,7 +396,7 @@ async function checkCertificateTransparency(domain: string): Promise<any> {
       return null;
     }
 
-    const certs: any[] = await response.json();
+    const certs = (await response.json()) as any[];
     
     if (!certs || certs.length === 0) {
       return null;

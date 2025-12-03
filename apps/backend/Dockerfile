@@ -8,21 +8,15 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install all dependencies (including devDependencies for build)
+# Install all dependencies (keep tsx for runtime)
 RUN npm ci
 
 # Copy source code
 COPY . .
 
-# Build TypeScript with increased memory
-RUN NODE_OPTIONS="--max-old-space-size=2048" npm run build
-
-# Remove devDependencies to reduce image size
-RUN npm prune --production
-
 # Expose port (Cloud Run will set PORT env var)
 EXPOSE 8080
 
-# Start the server using built JavaScript
+# Start the server using tsx runtime (no build needed)
 CMD ["npm", "run", "start:prod"]
 

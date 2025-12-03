@@ -25,7 +25,7 @@ app.use(routes);
 
 // Serve static files from frontend directory (development only)
 if (serverConfig.nodeEnv === 'development' || serverConfig.serveFrontend) {
-  app.use(express.static(path.join(process.cwd(), 'frontend')));
+  app.use(express.static(path.join(process.cwd(), '../frontend')));
 }
 
 // Error handler (must be last)
