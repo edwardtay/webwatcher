@@ -250,31 +250,32 @@ Body: { "message": "your query here" }
 ## 📁 Project Structure
 
 ```
-webwatcher-backend/
-├── src/
-│   ├── api/
-│   │   ├── controllers/      # Request handlers
-│   │   ├── routes/           # API routes
-│   │   └── middleware/       # Validation & error handling
-│   ├── services/             # Business logic
-│   │   ├── agent.service.ts
-│   │   ├── url-security.service.ts
-│   │   ├── threat-intel.service.ts
-│   │   ├── policy.service.ts
-│   │   └── incident.service.ts
-│   ├── utils/                # Utilities
-│   │   ├── logger.ts
-│   │   ├── mcp-client.ts
-│   │   ├── letta-client.ts
-│   │   └── manual-tools.ts
-│   ├── config/               # Configuration
-│   └── server.ts             # Main server
-├── frontend/
-│   └── index.html            # Web interface
-├── private/                  # Sensitive configs (gitignored)
-├── backend/                  # Backend utilities
-└── docs/                     # Documentation
+webwatcher/                      # Monorepo root
+├── apps/                        # Runnable applications
+│   ├── backend/                 # Backend service (Cloud Run)
+│   │   ├── src/
+│   │   │   ├── api/             # API layer
+│   │   │   ├── services/        # Business logic
+│   │   │   ├── utils/           # Utilities
+│   │   │   ├── config/          # Configuration
+│   │   │   └── server.ts        # Main entry
+│   │   ├── Dockerfile
+│   │   └── package.json
+│   └── frontend/                # Frontend (Vercel)
+│       ├── index.html
+│       ├── js/
+│       └── vercel.json
+├── packages/mcp/                # MCP implementations
+├── infra/cloudrun/              # Infrastructure
+├── scripts/                     # Deployment scripts
+├── docs/                        # Documentation
+├── data/incidents/              # Incident reports
+├── private/                     # Private files (gitignored)
+├── cloudbuild.yaml
+├── package.json                 # Monorepo root
+└── tsconfig.base.json
 ```
+
 
 ## 🛠️ Development
 
