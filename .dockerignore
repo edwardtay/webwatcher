@@ -12,6 +12,10 @@ coverage
 .idea
 *.md
 !README.md
+private/
+scripts/
+backend/docs/
+backend/tests/
 
 
 
