@@ -1,6 +1,5 @@
 {
-  "version": 2,
-  "buildCommand": "mkdir -p dist && cp index.html dist/ && cp -r js dist/ 2>/dev/null || true",
+  "buildCommand": "cp index.html dist/index.html && cp -r js dist/js 2>/dev/null || mkdir -p dist && cp index.html dist/ && cp -r js dist/",
   "outputDirectory": "dist",
-  "installCommand": "echo 'No dependencies to install'"
+  "installCommand": "echo 'No dependencies'"
 }

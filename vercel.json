@@ -1,7 +1,0 @@
-{
-  "version": 2,
-  "buildCommand": "cd apps/frontend && mkdir -p dist && cp index.html dist/ && cp -r js dist/ 2>/dev/null || true",
-  "outputDirectory": "apps/frontend/dist",
-  "installCommand": "echo 'Skipping install'",
-  "framework": null
-}

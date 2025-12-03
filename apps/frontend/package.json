@@ -1,8 +1,7 @@
 {
   "name": "webwatcher-frontend",
   "version": "1.0.0",
-  "description": "WebWatcher Frontend - Cybersecurity Agent UI",
   "scripts": {
-    "build": "mkdir -p dist && cp index.html dist/ && cp -r js dist/ 2>/dev/null || true"
+    "build": "mkdir -p dist && cp index.html dist/ && cp -r js dist/"
   }
 }
