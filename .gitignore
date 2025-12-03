@@ -15,8 +15,14 @@ coverage/
 # Cursor IDE files
 .cursor/
 
+# Backend folder (internal backend files, not for public repo)
+backend/
+
 # Private folder (old code, tests, logs, sensitive files)
 private/
+
+# Data folders (incidents, feedback, logs)
+data/
 
 # Vercel API compiled files (Vercel compiles these automatically)
 api/*.js

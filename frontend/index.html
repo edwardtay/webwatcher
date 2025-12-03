@@ -3,832 +3,572 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>WebWatcher - Cybersecurity Agent</title>
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
+        
         html, body {
             height: 100%;
             margin: 0;
             padding: 0;
         }
+        
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Helvetica Neue', Arial, sans-serif;
-            background: #0d1117;
-            min-height: 100vh;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%);
+            color: #e5e7eb;
+            overflow: hidden;
             display: flex;
             flex-direction: column;
-            padding: 0;
-            color: #c9d1d9;
         }
-        .container {
-            max-width: 1000px;
+        
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
             width: 100%;
+            height: 100vh;
+            background-image: 
+                linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px);
+            background-size: 50px 50px;
+            pointer-events: none;
+            z-index: 0;
+        }
+        
+        .container {
+            max-width: 1400px;
             margin: 0 auto;
-            background: #161b22;
-            border: 1px solid rgba(255, 255, 255, 0.08);
+            padding: 8px;
+            position: relative;
+            z-index: 1;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            width: 100%;
+            height: 100vh;
+            max-height: 100vh;
+            overflow: hidden;
+        }
+        
+        .header {
+            text-align: center;
+            padding: 12px 0 8px 0;
+            position: relative;
+            flex-shrink: 0;
+        }
+        
+        .logo {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 4px;
+        }
+        
+        .logo-icon {
+            font-size: 72px;
+            filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5));
+            animation: pulse 2s ease-in-out infinite;
+        }
+        
+        @keyframes pulse {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.05); }
+        }
+        
+        .logo-text {
+            font-size: 72px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #00ffff 0%, #00ff88 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -1px;
+        }
+        
+        .tagline {
+            font-size: 15px;
+            color: #8b95a5;
+            letter-spacing: 1.5px;
+            text-transform: uppercase;
+            margin-top: 2px;
+            margin-bottom: 12px;
+        }
+        
+        .main-panel {
+            background: rgba(20, 25, 45, 0.8);
+            border: 1px solid rgba(0, 255, 255, 0.2);
             border-radius: 12px;
+            padding: 16px;
+            backdrop-filter: blur(10px);
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3);
+            margin-bottom: 8px;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            min-height: 0;
+            overflow: hidden;
+        }
+        
+        .actions-grid {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+            flex-shrink: 0;
+            max-width: 900px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+        
+        .action-btn {
+            background: linear-gradient(135deg, rgba(30, 35, 55, 0.8) 0%, rgba(20, 25, 45, 0.8) 100%);
+            border: 2px solid rgba(0, 255, 255, 0.2);
+            border-radius: 8px;
+            padding: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .action-btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.1), transparent);
+            transition: left 0.5s ease;
+        }
+        
+        .action-btn:hover::before {
+            left: 100%;
+        }
+        
+        .action-btn:hover {
+            transform: translateY(-3px);
+            border-color: rgba(0, 255, 255, 0.5);
+            box-shadow: 0 8px 24px rgba(0, 255, 255, 0.2);
+        }
+        
+        .action-icon {
+            font-size: 36px;
+            margin-bottom: 6px;
+            display: block;
+        }
+        
+        .action-title {
+            font-size: 19.5px;
+            font-weight: 600;
+            color: #00ffff;
+            margin-bottom: 3px;
+        }
+        
+        .action-desc {
+            font-size: 15px;
+            color: #8b95a5;
+            line-height: 1.3;
+        }
+        
+        .chat-container {
+            background: rgba(15, 20, 35, 0.6);
+            border: 1px solid rgba(0, 255, 255, 0.1);
+            border-radius: 10px;
             overflow: hidden;
             flex: 1;
             display: flex;
             flex-direction: column;
-            margin-top: 20px;
-            margin-bottom: 20px;
-            box-shadow: 0 4px 24px rgba(0, 0, 0, 0.3);
+            min-height: 0;
         }
-        .header {
-            background: #161b22;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            color: #f0f6fc;
-            padding: 32px 40px;
-            text-align: center;
-            position: relative;
-        }
-        .header h1 {
-            font-size: 2em;
-            margin-bottom: 8px;
-            font-weight: 600;
-            letter-spacing: -0.5px;
-        }
-        .header p {
-            opacity: 0.7;
-            font-size: 0.95em;
-            font-weight: 400;
-        }
-        .info-icon {
-            position: absolute;
-            top: 32px;
-            right: 40px;
-            width: 32px;
-            height: 32px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: #c9d1d9;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            cursor: pointer;
-            font-size: 18px;
-            font-weight: 600;
-            transition: all 0.2s ease;
-        }
-        .info-icon:hover {
-            background: rgba(255, 255, 255, 0.12);
-            border-color: rgba(255, 255, 255, 0.2);
-            color: #f0f6fc;
-            transform: scale(1.05);
-        }
-        .modal-overlay {
-            display: none;
-            position: fixed;
-            top: 0;
-            left: 0;
-            right: 0;
-            bottom: 0;
-            background: rgba(0, 0, 0, 0.7);
-            backdrop-filter: blur(4px);
-            z-index: 1000;
-            align-items: center;
-            justify-content: center;
-        }
-        .modal-overlay.active {
-            display: flex;
-        }
-        .modal {
-            background: #161b22;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 12px;
-            max-width: 600px;
-            width: 90%;
-            max-height: 80vh;
+        
+        .chat-messages {
+            height: 0;
+            flex: 1;
             overflow-y: auto;
-            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
-            animation: modalSlideIn 0.3s ease;
+            padding: 10px;
+            scroll-behavior: smooth;
+            min-height: 200px;
+            max-height: 100%; overflow-y: auto;
         }
-        @keyframes modalSlideIn {
+        
+        .chat-messages::-webkit-scrollbar {
+            width: 8px;
+        }
+        
+        .chat-messages::-webkit-scrollbar-track {
+            background: rgba(0, 0, 0, 0.2);
+        }
+        
+        .chat-messages::-webkit-scrollbar-thumb {
+            background: rgba(0, 255, 255, 0.3);
+            border-radius: 4px;
+        }
+        
+        .message {
+            margin-bottom: 10px;
+            animation: slideIn 0.3s ease;
+        }
+        
+        @keyframes slideIn {
             from {
                 opacity: 0;
-                transform: translateY(-20px);
+                transform: translateY(10px);
             }
             to {
                 opacity: 1;
                 transform: translateY(0);
             }
         }
-        .modal-header {
-            padding: 24px 32px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-        .modal-header h2 {
-            margin: 0;
-            font-size: 1.5em;
-            font-weight: 600;
-            color: #f0f6fc;
-        }
-        .modal-close {
-            width: 32px;
-            height: 32px;
-            border-radius: 6px;
-            background: transparent;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            color: #c9d1d9;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            transition: all 0.2s ease;
-        }
-        .modal-close:hover {
-            background: rgba(255, 255, 255, 0.08);
-            border-color: rgba(255, 255, 255, 0.2);
-            color: #f0f6fc;
-        }
-        .modal-body {
-            padding: 32px;
-            color: #c9d1d9;
-            line-height: 1.6;
-        }
-        .modal-body h3 {
-            color: #f0f6fc;
-            font-size: 1.2em;
-            margin-top: 24px;
-            margin-bottom: 12px;
-            font-weight: 600;
-        }
-        .modal-body h3:first-child {
-            margin-top: 0;
-        }
-        .modal-body p {
-            margin-bottom: 16px;
-            font-size: 0.95em;
-        }
-        .modal-body ul {
-            margin-left: 20px;
-            margin-bottom: 16px;
-        }
-        .modal-body li {
-            margin-bottom: 8px;
-            font-size: 0.95em;
-        }
-        .modal-body code {
-            background: rgba(255, 255, 255, 0.05);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            color: #58a6ff;
-        }
-        .content {
-            padding: 32px 40px;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            overflow: hidden;
-        }
-        .chat-section {
-            background: transparent;
-            border-radius: 0;
-            padding: 0;
-            border: none;
-            box-shadow: none;
-            flex: 1;
-            display: flex;
-            flex-direction: column;
-            min-height: 0;
-            overflow: hidden;
-            height: 100%;
-        }
-        .chat-section h2 {
-            color: #f0f6fc;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            font-size: 1.25em;
-            font-weight: 500;
-            margin-bottom: 24px;
-            flex-shrink: 0;
-        }
-        .chat-messages {
-            background: #0d1117;
-            border-radius: 8px;
-            padding: 24px;
-            flex: 1 1 auto;
-            overflow-y: auto;
-            overflow-x: hidden;
-            margin-bottom: 20px;
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            min-height: 0;
-            max-height: none;
-        }
-        .chat-messages::-webkit-scrollbar {
-            width: 8px;
-        }
-        .chat-messages::-webkit-scrollbar-track {
-            background: #0a0e14;
-            border-radius: 4px;
-        }
-        .chat-messages::-webkit-scrollbar-thumb {
-            background: rgba(0, 255, 255, 0.3);
-            border-radius: 4px;
-        }
-        .chat-messages::-webkit-scrollbar-thumb:hover {
-            background: rgba(0, 255, 255, 0.5);
-        }
-        .message {
-            margin-bottom: 20px;
-            padding: 16px 20px;
-            border-radius: 8px;
-        }
-        .message.user {
-            background: rgba(56, 139, 253, 0.1);
+        
+        .message-user {
             text-align: right;
-            border: 1px solid rgba(56, 139, 253, 0.2);
         }
-        .message.agent {
-            background: rgba(255, 255, 255, 0.03);
-            border: 1px solid rgba(255, 255, 255, 0.08);
+        
+        .message-content {
+            display: inline-block;
+            max-width: 85%;
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 18px;
+            line-height: 1.4;
+            word-wrap: break-word;
+            overflow-wrap: break-word;
         }
+        
+        .message-user .message-content {
+            background: linear-gradient(135deg, rgba(0, 255, 255, 0.15) 0%, rgba(0, 255, 136, 0.15) 100%);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            text-align: left;
+        }
+        
+        .message-agent .message-content {
+            background: rgba(30, 35, 55, 0.6);
+            border: 1px solid rgba(100, 116, 139, 0.3);
+        }
+        
         .message-label {
-            font-weight: 600;
-            font-size: 0.85em;
-            margin-bottom: 8px;
-            color: #8b949e;
+            font-size: 13.5px;
+            color: #6b7280;
+            margin-bottom: 3px;
             text-transform: uppercase;
-            letter-spacing: 0.5px;
+            letter-spacing: 0.8px;
         }
-        .chat-input {
-            display: flex;
-            flex-direction: column;
-            gap: 10px;
-            flex-shrink: 0;
-        }
-        .chat-input-row {
-            display: flex;
-            gap: 10px;
-            width: 100%;
-            align-items: center;
-            flex-shrink: 0;
-        }
-        .chat-input input {
-            flex: 1;
-            padding: 16px 20px;
-            background: #0d1117;
-            border: 1px solid rgba(255, 255, 255, 0.12);
-            border-radius: 8px;
-            font-size: 0.95em;
-            color: #f0f6fc;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            transition: all 0.2s ease;
-            width: 100%;
-            min-width: 0;
-        }
-        .chat-input input:focus {
-            outline: none;
-            border-color: rgba(56, 139, 253, 0.5);
-            background: #161b22;
-            box-shadow: 0 0 0 3px rgba(56, 139, 253, 0.1);
-        }
-        .chat-input input::placeholder {
-            color: #6e7681;
-        }
-        .chat-input button {
-            padding: 16px 20px;
-            background: #238636;
-            color: #ffffff;
-            border: 1px solid #238636;
-            border-radius: 8px;
-            cursor: pointer;
-            font-size: 1.2em;
-            font-weight: 600;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-            transition: all 0.2s ease;
-            min-width: 60px;
-            box-shadow: 0 1px 3px rgba(35, 134, 54, 0.3);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .chat-input button:hover:not(:disabled) {
-            background: #2ea043;
-            border-color: #2ea043;
-            box-shadow: 0 2px 6px rgba(35, 134, 54, 0.4);
-            transform: translateY(-1px);
-        }
-        .chat-input button:active:not(:disabled) {
-            background: #238636;
-            border-color: #238636;
-            transform: translateY(0);
-            box-shadow: 0 1px 2px rgba(35, 134, 54, 0.3);
-        }
-        .mcp-suggestion-btn {
-            padding: 5px 9px;
-            background: rgba(35, 134, 54, 0.1);
-            color: #3fb950;
-            border: 1px solid rgba(35, 134, 54, 0.3);
-            border-radius: 3px;
-            cursor: pointer;
-            font-size: 0.7em;
-            font-weight: 500;
-            transition: all 0.2s ease;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
-        }
-        .mcp-suggestion-btn:hover {
-            background: rgba(35, 134, 54, 0.2);
-            border-color: rgba(35, 134, 54, 0.5);
-            transform: translateY(-1px);
-            box-shadow: 0 2px 4px rgba(35, 134, 54, 0.2);
-        }
-        .mcp-suggestion-btn:active {
-            transform: translateY(0);
-            box-shadow: 0 1px 2px rgba(35, 134, 54, 0.15);
-        }
-        .chat-input button:disabled {
-            background: #21262d;
-            color: #6e7681;
-            border-color: #30363d;
-            cursor: not-allowed;
-            transform: none;
-            box-shadow: none;
-        }
-        pre {
-            background: #0a0e14;
-            border: 1px solid rgba(0, 255, 255, 0.1);
+        
+        .chat-input-container {
             padding: 10px;
-            border-radius: 4px;
-            overflow-x: auto;
-            font-size: 0.9em;
-            color: #a0d0ff;
-            font-family: 'Courier New', monospace;
+            background: rgba(10, 15, 30, 0.8);
+            border-top: 1px solid rgba(0, 255, 255, 0.15);
+            flex-shrink: 0;
+        }
+        
+        .input-wrapper {
+            display: flex;
+            gap: 8px;
+        }
+        
+        .chat-input {
+            flex: 1;
+            background: rgba(30, 35, 55, 0.6);
+            border: 1px solid rgba(0, 255, 255, 0.3);
+            border-radius: 6px;
+            padding: 10px 12px;
+            color: #e5e7eb;
+            font-size: 18px;
+            font-family: inherit;
+            transition: all 0.3s ease;
+        }
+        
+        .chat-input:focus {
+            outline: none;
+            border-color: rgba(0, 255, 255, 0.6);
+            box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.1);
+        }
+        
+        .chat-input::placeholder {
+            color: #6b7280;
+        }
+        
+        .send-btn {
+            background: linear-gradient(135deg, #00ffff 0%, #00ff88 100%);
+            border: none;
+            border-radius: 6px;
+            padding: 10px 20px;
+            color: #0a0e27;
+            font-weight: 600;
+            font-size: 18px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+        
+        .send-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(0, 255, 255, 0.4);
+        }
+        
+        .send-btn:active {
+            transform: translateY(0);
+        }
+        
+        .loading::after {
+            content: '...';
+            animation: dots 1.5s infinite;
+        }
+        
+        @keyframes dots {
+            0%, 20% { content: '.'; }
+            40% { content: '..'; }
+            60%, 100% { content: '...'; }
+        }
+        
+        .status-bar {
+            display: flex;
+            justify-content: center;
+            gap: 20px;
+            padding: 8px;
+            background: rgba(20, 25, 45, 0.6);
+            border-radius: 8px;
+            margin-top: auto;
+            flex-shrink: 0;
+        }
+        
+        .status-item {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 15px;
+            color: #8b95a5;
+        }
+        
+        .status-dot {
+            width: 6px;
+            height: 6px;
+            border-radius: 50%;
+            background: #00ff88;
+            box-shadow: 0 0 8px rgba(0, 255, 136, 0.6);
+            animation: blink 2s ease-in-out infinite;
+        }
+        
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+        
+        @media (max-width: 768px) {
+            .actions-grid {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            
+            .logo-text {
+                font-size: 48px;
+            }
+            
+            .logo-icon {
+                font-size: 48px;
+            }
+            
+            .main-panel {
+                padding: 10px;
+            }
+            
+            .chat-messages {
+            height: 0;
+                min-height: 200px;
+            }
+            
+            .container {
+                padding: 6px;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .actions-grid {
+                grid-template-columns: 1fr;
+            }
         }
     </style>
 </head>
 <body>
     <div class="container">
         <div class="header">
-            <div class="info-icon" onclick="openInfoModal()" title="About WebWatcher">ℹ</div>
-            <h1>🔒 WebWatcher</h1>
-            <p>Cybersecurity Agent for Web2 and Web3</p>
-            <div style="margin-top: 16px; padding: 10px 16px; background: rgba(35, 134, 54, 0.1); border: 1px solid rgba(35, 134, 54, 0.2); border-radius: 6px; text-align: center;">
-                <div style="color: #3fb950; font-size: 0.875em; font-weight: 500;">
-                    <strong>✓ MCP and A2A enabled</strong> <span id="lettaStatusContainer" style="display: none;"><span style="color: #6e7681; margin: 0 8px;">•</span> <strong id="lettaStatus"></strong></span> <span style="color: #6e7681; margin: 0 8px;">•</span> <span style="color: #8b949e;">x402 coming soon</span>
+            <div class="logo">
+                <span class="logo-icon">🛡️</span>
+                <span class="logo-text">WebWatcher</span>
+            </div>
+            <div class="tagline">Cybersecurity Agent for Everyone</div>
+        </div>
+        
+        <div class="main-panel">
+            <div class="actions-grid">
+                <div class="action-btn" onclick="quickAction('scan_url')">
+                    <span class="action-icon">🔍</span>
+                    <div class="action-title">Scan URL</div>
+                    <div class="action-desc">Detect phishing & malware</div>
+                </div>
+                
+                <div class="action-btn" onclick="quickAction('check_domain')">
+                    <span class="action-icon">🌐</span>
+                    <div class="action-title">Check Domain</div>
+                    <div class="action-desc">Reputation analysis</div>
+                </div>
+                
+                <div class="action-btn" onclick="quickAction('analyze_email')">
+                    <span class="action-icon">📧</span>
+                    <div class="action-title">Email Analysis</div>
+                    <div class="action-desc">Threat detection</div>
+                </div>
+                
+                <div class="action-btn" onclick="quickAction('breach_check')">
+                    <span class="action-icon">🔐</span>
+                    <div class="action-title">Breach Check</div>
+                    <div class="action-desc">Data breach search</div>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message message-agent">
+                        <div class="message-label">WebWatcher</div>
+                        <div class="message-content">
+                            🛡️ <strong>WebWatcher initialized.</strong> Ready to analyze security threats.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <input 
+                            type="text" 
+                            id="chatInput" 
+                            class="chat-input" 
+                            placeholder="Enter URL, domain, email, or security query..."
+                            onkeypress="handleKeyPress(event)"
+                        />
+                        <button class="send-btn" onclick="sendMessage()">Analyze</button>
+                    </div>
                 </div>
             </div>
         </div>
         
-        <!-- Info Modal -->
-        <div class="modal-overlay" id="infoModal" onclick="closeInfoModal(event)">
-            <div class="modal" onclick="event.stopPropagation()">
-                <div class="modal-header">
-                    <h2>About WebWatcher</h2>
-                    <button class="modal-close" onclick="closeInfoModal(event)">×</button>
-                </div>
-                <div class="modal-body">
-                    <h3>Overview</h3>
-                    <p>
-                        WebWatcher is an advanced cybersecurity agent built on <strong>VeriSense</strong> and <strong>AgentKit</strong>. 
-                        It provides comprehensive security analysis, threat detection, and monitoring capabilities for both Web2 and Web3 environments.
-                    </p>
-                    
-                    <h3>Key Features</h3>
-                    <ul>
-                        <li><strong>Website Security Scanning</strong> - Detect phishing red flags and security risks using A2A (Agent-to-Agent) coordination</li>
-                        <li><strong>CVE Vulnerability Search</strong> - Search Common Vulnerabilities and Exposures database</li>
-                        <li><strong>Blockchain Transaction Analysis</strong> - Analyze blockchain transactions for suspicious patterns and risks</li>
-                        <li><strong>Wallet Risk Scanning</strong> - Scan wallet addresses for security threats and anomalies</li>
-                        <li><strong>Security State Summaries</strong> - Get comprehensive security posture assessments</li>
-                        <li><strong>Advanced Web Search</strong> - Powered by Exa MCP for high-quality, semantic search results</li>
-                        <li><strong>Letta Integration</strong> - Autonomous learning and self-improvement with long-term memory</li>
-                    </ul>
-                    
-                    <h3>Technology Stack</h3>
-                    <ul>
-                        <li><strong>AgentKit</strong> - Coinbase's framework for building AI agents</li>
-                        <li><strong>VeriSense</strong> - Security-focused agent platform</li>
-                        <li><strong>MCP (Model Context Protocol)</strong> - For tool integration and agent coordination</li>
-                        <li><strong>A2A Coordination</strong> - Automatic agent-to-agent communication for complex tasks</li>
-                        <li><strong>Exa Search</strong> - Advanced semantic web search capabilities</li>
-                        <li><strong>Letta</strong> - Autonomous learning platform for continuous self-improvement</li>
-                    </ul>
-                    
-                    <h3>How It Works - Autonomous & Intelligent</h3>
-                    <p>
-                        WebWatcher uses <strong>autonomous multi-agent coordination</strong> to analyze security threats. 
-                        When you provide a URL (no "scan" command needed), multiple specialized agents work together automatically:
-                    </p>
-                    <ul>
-                        <li><code>UrlFeatureAgent</code> extracts URL features and patterns</li>
-                        <li><code>UrlScanAgent</code> performs real-time security scan via urlscan.io</li>
-                        <li><code>PhishingRedFlagAgent</code> analyzes features for phishing indicators</li>
-                        <li>Results are automatically coordinated via <strong>A2A protocol</strong></li>
-                        <li>Every interaction is <strong>learned by Letta</strong> for continuous improvement</li>
-                    </ul>
-                    
-                    <h3>Autonomous Capabilities</h3>
-                    <ul>
-                        <li><strong>Automatic URL Detection</strong>: Type any URL - agent automatically scans (no "scan" command needed)</li>
-                        <li><strong>Real-Time Intelligence</strong>: Uses Exa MCP for latest CVE/threat data (not cached)</li>
-                        <li><strong>Multi-Agent Coordination</strong>: Automatically coordinates with specialized agents</li>
-                        <li><strong>Self-Improving</strong>: Learns from every interaction, gets smarter over time</li>
-                        <li><strong>Risk-Based Escalation</strong>: High-risk findings automatically escalate to triage agents</li>
-                    </ul>
-                    
-                    <h3>Usage</h3>
-                    <p>
-                        Simply type your security questions or use the quick action buttons above the input field. 
-                        Try commands like:
-                    </p>
-                    <ul>
-                        <li>"edwardtay.com" - Automatically scans (no "scan" command needed)</li>
-                        <li>"search CVE log4j" - Find latest vulnerability information</li>
-                        <li>"analyze transaction 0x..." - Analyze blockchain transactions</li>
-                    </ul>
-                    
-                    <p style="margin-top: 24px; padding-top: 16px; border-top: 1px solid rgba(255, 255, 255, 0.08); color: #8b949e; font-size: 0.9em;">
-                        built with <strong>agentkit</strong>, <strong>letta</strong> and <strong>verisense</strong> | Made by <strong>Edward</strong>
-                    </p>
-                </div>
+        <div class="status-bar">
+            <div class="status-item">
+                <span class="status-dot"></span>
+                <span>MCP Enabled</span>
             </div>
-        </div>
-        <div class="content">
-            <div class="chat-section">
-                <h2>💬 Chat with WebWatcher</h2>
-                <div class="chat-messages" id="chatMessages">
-                </div>
-                <div class="chat-input">
-                    <div id="mcpSuggestions" style="margin-bottom: 10px; display: flex; flex-wrap: wrap; gap: 4px;">
-                        <button type="button" onclick="useMcpCommand('search_cve')" class="mcp-suggestion-btn" title="Search CVE vulnerabilities">
-                            🔍 Search CVE
-                        </button>
-                        <button type="button" onclick="useMcpCommand('analyze_transaction')" class="mcp-suggestion-btn" title="Analyze blockchain transaction">
-                            🔎 Analyze Transaction
-                        </button>
-                        <button type="button" onclick="useMcpCommand('scan_wallet_risks')" class="mcp-suggestion-btn" title="Scan wallet for risks">
-                            🛡️ Scan Wallet
-                        </button>
-                        <button type="button" onclick="useMcpCommand('summarize_security_state')" class="mcp-suggestion-btn" title="Get security summary">
-                            📊 Security Summary
-                        </button>
-                    </div>
-                    <div class="chat-input-row">
-                        <input type="text" id="messageInput" placeholder="Ask about security analysis, transactions, addresses... (or click buttons above)" onkeypress="if(event.key==='Enter' && !event.shiftKey) { event.preventDefault(); sendMessage(); }">
-                        <button type="button" onclick="sendMessage()" id="sendButton" style="cursor: pointer;">➡️</button>
-                    </div>
-                </div>
+            <div class="status-item">
+                <span class="status-dot"></span>
+                <span>A2A Protocol</span>
             </div>
         </div>
     </div>
-
+    
     <script>
-        // API endpoint - Set API_URL environment variable in Vercel dashboard
-        // Defaults to Google Cloud Run URL if not set
-        // window.__API_URL__ will be injected by Vercel build script
-        // Localhost automatically uses local backend, production uses Cloud Run
-        const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-        const API_BASE_URL = isLocalhost
-            ? 'http://localhost:3000'  // Localhost always uses local backend
-            : (typeof window !== 'undefined' && window.__API_URL__) 
-                ? window.__API_URL__   // Vercel: use injected API_URL
-                : 'https://webwatcher.lever-labs.com';  // Fallback to Cloud Run
+        const API_BASE = window.location.origin;
+        console.log('WebWatcher v5 - API:', API_BASE);
         
-        let threadId = 'web-' + Date.now();
-        
-        // Check Letta status on page load (only show if enabled)
-        async function checkLettaStatus() {
-            try {
-                const response = await fetch(API_BASE_URL + '/api/chat', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message: 'status check', threadId: 'status-' + Date.now() })
-                });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const lettaStatusEl = document.getElementById('lettaStatus');
-                    const lettaContainer = document.getElementById('lettaStatusContainer');
-                    if (lettaStatusEl && lettaContainer && data.lettaEnabled !== undefined) {
-                        if (data.lettaEnabled) {
-                            lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
-                            lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
-                            lettaContainer.style.display = 'inline';
-                        } else {
-                            // Hide Letta status if not enabled
-                            lettaContainer.style.display = 'none';
-                        }
-                    }
-                }
-            } catch (error) {
-                // Silently fail - status check is optional
-                console.debug('Letta status check failed:', error);
-            }
-        }
-        
-        // Check status after page loads
-        setTimeout(checkLettaStatus, 1000);
-
-        function openInfoModal() {
-            const modal = document.getElementById('infoModal');
-            if (modal) {
-                modal.classList.add('active');
-                document.body.style.overflow = 'hidden';
-            }
-        }
-
-        function closeInfoModal(event) {
-            if (event) {
-                event.stopPropagation();
-            }
-            const modal = document.getElementById('infoModal');
-            if (modal) {
-                modal.classList.remove('active');
-                document.body.style.overflow = '';
-            }
-        }
-
-        // Close modal on Escape key
-        document.addEventListener('keydown', function(event) {
-            if (event.key === 'Escape') {
-                closeInfoModal(event);
-            }
-        });
-
-        let loadingMessageId = null;
-
-        function showLoadingMessage() {
-            const messagesDiv = document.getElementById('chatMessages');
-            if (!messagesDiv) return;
-
-            const loadingDiv = document.createElement('div');
-            loadingDiv.id = 'loadingMessage';
-            loadingDiv.className = 'message loading';
-            loadingDiv.innerHTML = `
-                <div class="message-label">WEBWATCHER AGENT</div>
-                <div class="loading-spinner">
-                    <span>Processing your request</span>
-                    <div class="loading-dots">
-                        <span></span>
-                        <span></span>
-                        <span></span>
-                    </div>
-                </div>
-            `;
-            messagesDiv.appendChild(loadingDiv);
-            loadingMessageId = 'loadingMessage';
+        function quickAction(action) {
+            const examples = {
+                'scan_url': 'Scan https://example.com for threats',
+                'check_domain': 'Check domain reputation for example.com',
+                'analyze_email': 'Analyze email from suspicious@example.com',
+                'breach_check': 'Check if user@example.com has been breached'
+            };
             
-            // Scroll to bottom
-            requestAnimationFrame(() => {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            });
+            document.getElementById('chatInput').value = examples[action];
+            document.getElementById('chatInput').focus();
         }
-
-        function removeLoadingMessage() {
-            if (loadingMessageId) {
-                const loadingDiv = document.getElementById(loadingMessageId);
-                if (loadingDiv) {
-                    loadingDiv.remove();
-                }
-                loadingMessageId = null;
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendMessage();
             }
         }
-
+        
         async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            
+            if (!message) return;
+            
+            addMessage(message, 'user');
+            input.value = '';
+            
+            const loadingId = addMessage('<span class="loading">Analyzing</span>', 'agent');
+            
             try {
-                const input = document.getElementById('messageInput');
-                if (!input) {
-                    console.error('Message input not found');
-                    return;
-                }
-                
-                const message = input.value.trim();
-                if (!message) {
-                    console.log('Empty message, ignoring');
-                    return;
-                }
-
-                const sendButton = document.getElementById('sendButton');
-                if (!sendButton) {
-                    console.error('Send button not found');
-                    return;
-                }
-                
-                sendButton.disabled = true;
-                sendButton.textContent = '⏳';
-
-                // Add user message to chat
-                addMessage('user', message);
-                input.value = '';
-
-                // Show loading indicator
-                showLoadingMessage();
-
-                // Debug: Log API URL being used
-                console.log('API_BASE_URL:', API_BASE_URL);
-                console.log('Full endpoint:', API_BASE_URL + '/api/chat');
-                
-                const response = await fetch(API_BASE_URL + '/api/chat', {
+                const response = await fetch(`${API_BASE}/api/chat`, {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ message, threadId })
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message }),
+                    cache: 'no-cache'
                 });
-
-                // Remove loading indicator
-                removeLoadingMessage();
-
+                
                 if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-                    console.error('API Error:', response.status, errorData);
-                    throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
+                    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
                 }
-
+                
                 const data = await response.json();
                 
-                // Update Letta status indicator (only show if Letta is enabled)
-                if (data.lettaEnabled !== undefined) {
-                    const lettaStatusEl = document.getElementById('lettaStatus');
-                    const lettaContainer = document.getElementById('lettaStatusContainer');
-                    if (lettaStatusEl && lettaContainer) {
-                        if (data.lettaEnabled) {
-                            lettaStatusEl.innerHTML = '<span style="color: #3fb950;">✓ Letta Learning Active</span>';
-                            lettaStatusEl.title = 'Letta autonomous learning is enabled - agent learns from every interaction';
-                            lettaContainer.style.display = 'inline';
-                        } else {
-                            // Hide Letta status if not enabled
-                            lettaContainer.style.display = 'none';
-                        }
-                    }
-                }
+                document.getElementById(loadingId).remove();
                 
                 if (data.response) {
-                    // Add Letta learning indicator to response if Letta is enabled
-                    let responseText = data.response;
-                    
-                    // Add demo showcase indicators
-                    if (data.metadata) {
-                        const indicators = [];
-                        if (data.metadata.a2aCoordinated) {
-                            indicators.push('🤖 **A2A Coordination**: Multi-agent coordination activated');
-                        }
-                        if (data.metadata.realTimeDataUsed) {
-                            indicators.push('⚡ **Real-Time Data**: Latest threat intelligence retrieved');
-                        }
-                        if (data.metadata.autonomousAction) {
-                            indicators.push('🎯 **Autonomous Action**: Agent acted independently');
-                        }
-                        if (data.lettaEnabled) {
-                            indicators.push('💡 **Learning**: This interaction is being learned for continuous improvement');
-                        }
-                        
-                        if (indicators.length > 0) {
-                            responseText += '\n\n---\n**✨ Autonomous Capabilities Demonstrated:**\n' + indicators.map(i => `- ${i}`).join('\n');
-                        }
-                    } else if (data.lettaEnabled) {
-                        // Fallback: Just show Letta learning
-                        responseText += '\n\n---\n*💡 This interaction is being learned by Letta for continuous improvement*';
-                    }
-                    
-                    addMessage('agent', responseText);
+                    addMessage(data.response, 'agent', true);
+                } else if (data.error) {
+                    addMessage('❌ Error: ' + data.error, 'agent');
                 } else {
-                    addMessage('agent', 'Error: ' + (data.error || 'Unknown error'));
+                    addMessage('❌ Unexpected response format', 'agent');
                 }
             } catch (error) {
-                console.error('Error sending message:', error);
-                console.error('Error details:', {
-                    message: error.message,
-                    stack: error.stack,
-                    API_BASE_URL: API_BASE_URL
-                });
-                // Remove loading indicator on error
-                removeLoadingMessage();
-                
-                // More detailed error message
-                let errorMsg = 'Failed to send message. ';
-                if (error.message) {
-                    errorMsg += error.message;
-                } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
-                    errorMsg += 'Network error - cannot reach API server. Check API_URL configuration.';
-                } else {
-                    errorMsg += 'Unknown error occurred.';
-                }
-                errorMsg += ` (API: ${API_BASE_URL})`;
-                addMessage('agent', 'Error: ' + errorMsg);
-            } finally {
-                const sendButton = document.getElementById('sendButton');
-                if (sendButton) {
-                    sendButton.disabled = false;
-                    sendButton.textContent = '➡️';
-                }
+                document.getElementById(loadingId).remove();
+                console.error('Connection error:', error);
+                const errorMsg = error.message || 'Failed to fetch';
+                addMessage(`❌ Connection error: ${errorMsg}`, 'agent');
             }
         }
         
-        // Make sendMessage available globally
-        window.sendMessage = sendMessage;
-
-        // MCP command suggestions handler
-        function useMcpCommand(command) {
-            const input = document.getElementById('messageInput');
-            if (!input) return;
-
-            const examples = {
-                'search_cve': 'Search for CVE vulnerabilities in OpenSSL 2024',
-                'analyze_transaction': 'Analyze transaction 0x123... on ethereum',
-                'scan_wallet_risks': 'Scan wallet 0x456... on base for risks',
-                'summarize_security_state': 'Summarize security for address 0x789...'
-            };
-
-            const example = examples[command] || '';
-            input.value = example;
-            input.focus();
-        }
-        window.useMcpCommand = useMcpCommand;
-
-        function addMessage(type, content) {
+        function addMessage(content, type, isMarkdown = false) {
             const messagesDiv = document.getElementById('chatMessages');
-            if (!messagesDiv) return;
+            const messageId = 'msg-' + Date.now();
             
             const messageDiv = document.createElement('div');
-            messageDiv.className = 'message ' + type;
-            messageDiv.innerHTML = '<div class="message-label">' + (type === 'user' ? 'You' : 'WebWatcher Agent') + '</div><div>' + formatMessage(content) + '</div>';
-            messagesDiv.appendChild(messageDiv);
+            messageDiv.id = messageId;
+            messageDiv.className = `message message-${type}`;
             
-            // Force scroll to bottom
-            requestAnimationFrame(() => {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            });
+            const label = type === 'user' ? 'You' : 'WebWatcher';
             
-            setTimeout(() => {
-                messagesDiv.scrollTop = messagesDiv.scrollHeight;
-            }, 50);
-        }
-
-        function formatMessage(content) {
-            // Simple formatting for JSON and code blocks
-            if (content.includes('{') && content.includes('}')) {
-                try {
-                    const jsonMatch = content.match(/\{[\s\S]*\}/);
-                    if (jsonMatch) {
-                        const json = JSON.parse(jsonMatch[0]);
-                        return content.replace(jsonMatch[0], '<pre>' + JSON.stringify(json, null, 2) + '</pre>');
-                    }
-                } catch (e) {
-                    // Not valid JSON, continue
-                }
+            if (isMarkdown && typeof marked !== 'undefined') {
+                content = marked.parse(content);
             }
             
-            // Convert markdown code blocks and inline code
-            const bt = String.fromCharCode(96);
-            const codeBlockRe = new RegExp(bt + bt + bt + '([\\s\\S]*?)' + bt + bt + bt, 'g');
-            content = content.replace(codeBlockRe, '<pre style="background: rgba(0, 212, 255, 0.1); border: 1px solid rgba(0, 212, 255, 0.3); padding: 10px; border-radius: 4px; overflow-x: auto; margin: 10px 0;"><code>$1</code></pre>');
-            const inlineCodeRe = new RegExp(bt + '([^' + bt + ']+)' + bt, 'g');
-            content = content.replace(inlineCodeRe, function(match, code) {
-                // Highlight A2A flow indicators with green background
-                if (code.indexOf('->') !== -1 || code.indexOf('Agent') !== -1 || code.indexOf('User') !== -1) {
-                    return '<code style="background: rgba(0, 255, 136, 0.2); padding: 2px 6px; border-radius: 3px; color: #00ff88; font-weight: bold; border: 1px solid rgba(0, 255, 136, 0.4);">' + code + '</code>';
-                }
-                return '<code style="background: rgba(0, 255, 255, 0.1); padding: 2px 4px; border-radius: 3px;">' + code + '</code>';
-            });
+            messageDiv.innerHTML = `
+                <div class="message-label">${label}</div>
+                <div class="message-content">${content}</div>
+            `;
             
-            // Convert markdown links [text](url) to HTML hyperlinks
-            content = content.replace(/\[([^\]]+)\]\(([^)]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer" style="color: #00d4ff; text-decoration: underline; cursor: pointer;">$1</a>');
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
             
-            // Convert markdown bold **text** to HTML
-            content = content.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
-            
-            // Convert markdown italic *text* to HTML
-            content = content.replace(/(^|[^*])\*([^*]+)\*([^*]|$)/g, '$1<em>$2</em>$3');
-            
-            // Convert markdown headers
-            content = content.replace(/^### (.*$)/gm, '<h3>$1</h3>');
-            content = content.replace(/^## (.*$)/gm, '<h2>$1</h2>');
-            content = content.replace(/^# (.*$)/gm, '<h1>$1</h1>');
-            
-            // Convert markdown lists
-            content = content.replace(/^- (.*$)/gm, '<li>$1</li>');
-            
-            // Convert line breaks
-            content = content.replace(/\n/g, '<br>');
-            
-            return content;
+            return messageId;
         }
+        
+        window.addEventListener('load', () => {
+            document.getElementById('chatInput').focus();
+        });
     </script>
-    
-    <footer style="background: rgba(0, 255, 255, 0.05); border-top: 1px solid rgba(0, 255, 255, 0.15); color: #8a98a8; padding: 20px; text-align: center; margin-top: auto; width: 100%;">
-        <div style="font-size: 0.95em; line-height: 1.8; font-family: 'Courier New', monospace;">
-            built with 
-            <a href="https://github.com/coinbase/agentkit" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;">agentkit</a>, 
-            <a href="https://app.letta.com/" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;">letta</a> and 
-            <a href="https://verisense.network/" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;">verisense</a>
-            | Made by 
-            <a href="https://github.com/edwardtay" target="_blank" style="color: #00d4ff; text-decoration: none; border-bottom: 1px dotted rgba(0, 212, 255, 0.4); transition: all 0.3s;">Edward</a>
-        </div>
-    </footer>
 </body>
 </html>
-

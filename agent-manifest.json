@@ -1,0 +1,187 @@
+{
+  "name": "WebWatcher",
+  "version": "2.0.0",
+  "type": "cybersecurity",
+  "description": "Advanced cybersecurity agent for URL scanning, domain analysis, email phishing detection, and breach checking. Built on VeriSense with A2A and MCP protocols.",
+  "author": {
+    "name": "Lever Labs",
+    "url": "https://lever-labs.com"
+  },
+  "capabilities": [
+    "url_scanning",
+    "domain_analysis",
+    "email_analysis",
+    "breach_checking",
+    "threat_intelligence",
+    "phishing_detection",
+    "malware_detection",
+    "whois_lookup",
+    "ssl_analysis"
+  ],
+  "endpoints": {
+    "base": "https://webwatcher.lever-labs.com",
+    "health": "/health",
+    "chat": "/api/chat",
+    "security": "/api/security",
+    "a2a": "/api/a2a"
+  },
+  "a2a": {
+    "protocol": "http",
+    "format": "json",
+    "version": "1.0",
+    "tools": [
+      {
+        "name": "scan_url",
+        "description": "Comprehensive URL security scan using A2A protocol. Checks for phishing, malware, suspicious patterns, and threat intelligence.",
+        "input": {
+          "type": "object",
+          "properties": {
+            "url": {
+              "type": "string",
+              "description": "URL to scan for security threats"
+            }
+          },
+          "required": ["url"]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "riskScore": { "type": "number", "min": 0, "max": 100 },
+            "verdict": { "type": "string", "enum": ["safe", "suspicious", "malicious"] },
+            "details": { "type": "object" }
+          }
+        }
+      },
+      {
+        "name": "check_domain",
+        "description": "Domain reputation, WHOIS data, and threat intelligence using A2A protocol",
+        "input": {
+          "type": "object",
+          "properties": {
+            "domain": {
+              "type": "string",
+              "description": "Domain name to check (e.g., example.com)"
+            }
+          },
+          "required": ["domain"]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "riskScore": { "type": "number" },
+            "ageInDays": { "type": "number" },
+            "registrar": { "type": "string" },
+            "flags": { "type": "array", "items": { "type": "string" } }
+          }
+        }
+      },
+      {
+        "name": "analyze_email",
+        "description": "Email phishing and threat analysis using A2A protocol",
+        "input": {
+          "type": "object",
+          "properties": {
+            "emailData": {
+              "type": "string",
+              "description": "Email content, headers, or sender information"
+            }
+          },
+          "required": ["emailData"]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "phishingScore": { "type": "number" },
+            "threats": { "type": "array" },
+            "extractedUrls": { "type": "array" }
+          }
+        }
+      },
+      {
+        "name": "breach_check",
+        "description": "Data breach and credential leak detection using HaveIBeenPwned and A2A protocol",
+        "input": {
+          "type": "object",
+          "properties": {
+            "email": {
+              "type": "string",
+              "description": "Email address to check for breaches"
+            }
+          },
+          "required": ["email"]
+        },
+        "output": {
+          "type": "object",
+          "properties": {
+            "totalBreaches": { "type": "number" },
+            "riskScore": { "type": "number" },
+            "breaches": { "type": "array" }
+          }
+        }
+      }
+    ]
+  },
+  "mcp": {
+    "enabled": true,
+    "servers": ["exa", "webwatcher"],
+    "description": "Model Context Protocol integration for real-time threat intelligence"
+  },
+  "protocols": {
+    "a2a": {
+      "enabled": true,
+      "version": "1.0",
+      "coordination": "automatic"
+    },
+    "mcp": {
+      "enabled": true,
+      "version": "1.0"
+    },
+    "http": {
+      "enabled": true,
+      "version": "1.1"
+    }
+  },
+  "authentication": {
+    "type": "optional",
+    "methods": ["api_key", "none"],
+    "description": "API key optional for public endpoints"
+  },
+  "rateLimit": {
+    "requests": 100,
+    "period": "minute",
+    "burst": 20
+  },
+  "security": {
+    "tls": true,
+    "cors": true,
+    "inputValidation": true,
+    "outputSanitization": true
+  },
+  "monitoring": {
+    "health": "/health",
+    "metrics": "/metrics",
+    "logs": "structured"
+  },
+  "deployment": {
+    "platform": "Cloud Run",
+    "region": "global",
+    "scaling": "auto",
+    "availability": "99.9%"
+  },
+  "tags": [
+    "cybersecurity",
+    "phishing-detection",
+    "url-scanning",
+    "threat-intelligence",
+    "a2a",
+    "mcp",
+    "verisense"
+  ],
+  "license": "Apache-2.0",
+  "repository": "https://github.com/edwardtay/webwatcher",
+  "documentation": "https://webwatcher.lever-labs.com/docs",
+  "support": {
+    "email": "support@lever-labs.com",
+    "discord": "https://discord.gg/lever-labs"
+  }
+}

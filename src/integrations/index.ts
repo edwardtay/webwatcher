@@ -1,10 +1,7 @@
 /**
- * Partner Integrations Index
- * Exports all partner SDK clients
+ * External Integrations Index
+ * Web2 Security Services Only
  */
 
-export * from "./circle";
-export * from "./zetachain";
-export * from "./seedify";
-export * from "./somnia";
-export * from "./nodeops";
+// No Web3 integrations - pure Web2 security focus
+export {};

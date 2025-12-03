@@ -1,0 +1,5 @@
+# Ignore HTML files to prevent minification
+*.html
+frontend/
+dist/
+node_modules/

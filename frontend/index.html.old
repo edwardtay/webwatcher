@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebWatcher - Cybersecurity Agent (18:11:45)</title><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate"><meta http-equiv="Pragma" content="no-cache"><meta http-equiv="Expires" content="0">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; padding: 0; } body { display: flex; flex-direction: column; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: linear-gradient(135deg, #0a0e27 0%, #1a1f3a 100%); color: #e5e7eb; height: 100vh; overflow: hidden; }
+        body::before { content: ''; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-image: linear-gradient(rgba(0, 255, 255, 0.03) 1px, transparent 1px), linear-gradient(90deg, rgba(0, 255, 255, 0.03) 1px, transparent 1px); background-size: 50px 50px; pointer-events: none; z-index: 0; }
+        .container { max-width: 1400px; margin: 0 auto; height: 100%; padding: 5px 10px; position: relative; z-index: 1; display: flex; flex-direction: column; flex: 1; }
+        .header { flex-shrink: 0; text-align: center; padding: 5px 0; margin-bottom: 8px; }
+        .logo { display: inline-flex; align-items: center; gap: 8px; margin-bottom: 3px; }
+        .logo-icon { font-size: 72px; filter: drop-shadow(0 0 10px rgba(0, 255, 255, 0.5)); animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.05); } }
+        .logo-text { font-size: 72px; font-weight: 700; background: linear-gradient(135deg, #00ffff 0%, #00ff88 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; letter-spacing: -1px; }
+        .tagline { font-size: 15px; color: #8b95a5; letter-spacing: 1.5px; text-transform: uppercase; margin-top: 2px; }
+        .main-panel { flex: 1; display: flex; flex-direction: column; background: rgba(20, 25, 45, 0.8); border: 1px solid rgba(0, 255, 255, 0.2); border-radius: 10px; padding: 10px; backdrop-filter: blur(10px); box-shadow: 0 8px 32px rgba(0, 0, 0, 0.3); margin-bottom: 6px; }
+        .actions-grid { flex-shrink: 0; display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin-bottom: 10px; }
+        .action-btn { background: linear-gradient(135deg, rgba(30, 35, 55, 0.8) 0%, rgba(20, 25, 45, 0.8) 100%); border: 2px solid rgba(0, 255, 255, 0.2); border-radius: 8px; padding: 8px; cursor: pointer; transition: all 0.3s ease; position: relative; overflow: hidden; }
+        .action-btn::before { content: ''; position: absolute; top: 0; left: -100%; width: 100%; height: 100%; background: linear-gradient(90deg, transparent, rgba(0, 255, 255, 0.1), transparent); transition: left 0.5s ease; }
+        .action-btn:hover::before { left: 100%; }
+        .action-btn:hover { transform: translateY(-2px); border-color: rgba(0, 255, 255, 0.5); box-shadow: 0 6px 20px rgba(0, 255, 255, 0.2); }
+        .action-icon { font-size: 22px; margin-bottom: 4px; display: block; }
+        .action-title { font-size: 19.5px; font-weight: 600; color: #00ffff; margin-bottom: 2px; }
+        .action-desc { font-size: 15px; color: #8b95a5; line-height: 1.3; }
+        .chat-container { flex: 1; display: flex; flex-direction: column; background: rgba(15, 20, 35, 0.6); border: 1px solid rgba(0, 255, 255, 0.1); border-radius: 8px; overflow: hidden; }
+        .chat-messages { height: 300px; overflow-y: auto; padding: 8px; scroll-behavior: smooth; }
+        .chat-messages::-webkit-scrollbar { width: 6px; }
+        .chat-messages::-webkit-scrollbar-track { background: rgba(0, 0, 0, 0.2); }
+        .chat-messages::-webkit-scrollbar-thumb { background: rgba(0, 255, 255, 0.3); border-radius: 3px; }
+        .message { margin-bottom: 8px; animation: slideIn 0.3s ease; }
+        @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .message-user { text-align: right; }
+        .message-content { display: inline-block; max-width: 85%; padding: 6px 10px; border-radius: 8px; font-size: 18px; line-height: 1.4; }
+        .message-user .message-content { background: linear-gradient(135deg, rgba(0, 255, 255, 0.15) 0%, rgba(0, 255, 136, 0.15) 100%); border: 1px solid rgba(0, 255, 255, 0.3); text-align: left; }
+        .message-agent .message-content { background: rgba(30, 35, 55, 0.6); border: 1px solid rgba(100, 116, 139, 0.3); }
+        .message-label { font-size: 13.5px; color: #6b7280; margin-bottom: 2px; text-transform: uppercase; letter-spacing: 0.8px; }
+        .message-content h1, .message-content h2, .message-content h3 { color: #00ffff; margin: 4px 0 3px 0; font-size: 19.5px; }
+        .message-content h1 { font-size: 21px; }
+        .message-content h2 { font-size: 19.5px; }
+        .message-content p { margin: 3px 0; }
+        .message-content ul, .message-content ol { margin: 3px 0; padding-left: 16px; }
+        .message-content li { margin: 2px 0; }
+        .message-content code { background: rgba(0, 0, 0, 0.3); padding: 1px 4px; border-radius: 3px; font-family: 'Courier New', monospace; font-size: 16.5px; color: #00ff88; }
+        .message-content pre { background: rgba(0, 0, 0, 0.4); padding: 6px; border-radius: 4px; overflow-x: auto; margin: 4px 0; }
+        .message-content pre code { background: none; padding: 0; }
+        .message-content a { color: #00ffff; text-decoration: none; }
+        .message-content a:hover { text-decoration: underline; }
+        .message-content strong { color: #00ff88; font-weight: 600; }
+        .message-content blockquote { border-left: 2px solid rgba(0, 255, 255, 0.5); padding-left: 8px; margin: 4px 0; color: #9ca3af; }
+        .chat-input-container { position: sticky; bottom: 0; flex-shrink: 0; padding: 8px; background: rgba(10, 15, 30, 0.8); border-top: 1px solid rgba(0, 255, 255, 0.15); }
+        .input-wrapper { display: flex; gap: 6px; }
+        .chat-input { flex: 1; background: rgba(30, 35, 55, 0.6); border: 1px solid rgba(0, 255, 255, 0.3); border-radius: 6px; padding: 8px 10px; color: #e5e7eb; font-size: 18px; font-family: inherit; transition: all 0.3s ease; }
+        .chat-input:focus { outline: none; border-color: rgba(0, 255, 255, 0.6); box-shadow: 0 0 0 3px rgba(0, 255, 255, 0.1); }
+        .chat-input::placeholder { color: #6b7280; }
+        .send-btn { background: linear-gradient(135deg, #00ffff 0%, #00ff88 100%); border: none; border-radius: 6px; padding: 8px 16px; color: #0a0e27; font-weight: 600; font-size: 18px; cursor: pointer; transition: all 0.3s ease; text-transform: uppercase; letter-spacing: 0.8px; }
+        .send-btn:hover { transform: translateY(-2px); box-shadow: 0 6px 20px rgba(0, 255, 255, 0.4); }
+        .send-btn:active { transform: translateY(0); }
+        .loading { display: inline-block; }
+        .loading::after { content: '...'; animation: dots 1.5s infinite; }
+        @keyframes dots { 0%, 20% { content: '.'; } 40% { content: '..'; } 60%, 100% { content: '...'; } }
+        .status-bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 100; flex-shrink: 0; display: flex; justify-content: center; gap: 15px; padding: 6px; background: rgba(20, 25, 45, 0.6); border-radius: 6px; margin-top: 6px; }
+        .status-item { display: flex; align-items: center; gap: 5px; font-size: 15px; color: #8b95a5; }
+        .status-dot { width: 5px; height: 5px; border-radius: 50%; background: #00ff88; box-shadow: 0 0 8px rgba(0, 255, 136, 0.6); animation: blink 2s ease-in-out infinite; }
+        @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0.3; } }
+        @media (max-width: 768px) { .actions-grid { grid-template-columns: 1fr; } .logo-text { font-size: 48px; } .logo-icon { font-size: 48px; } .main-panel { padding: 8px; } .chat-messages { flex: 1; min-height: 200px; } .container { padding: 4px 8px; } }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <div class="logo">
+                <span class="logo-icon">🛡️</span>
+                <span class="logo-text">WebWatcher</span>
+            </div>
+            <div class="tagline">Cybersecurity Agent for Everyone</div>
+        </div>
+        
+        <div class="main-panel">
+            <div class="actions-grid">
+                <div class="action-btn" onclick="quickAction('scan_url')">
+                    <span class="action-icon">🔍</span>
+                    <div class="action-title">Scan URL</div>
+                    <div class="action-desc">Detect phishing & malware</div>
+                </div>
+                <div class="action-btn" onclick="quickAction('check_domain')">
+                    <span class="action-icon">🌐</span>
+                    <div class="action-title">Check Domain</div>
+                    <div class="action-desc">Reputation analysis</div>
+                </div>
+                <div class="action-btn" onclick="quickAction('analyze_email')">
+                    <span class="action-icon">📧</span>
+                    <div class="action-title">Email Analysis</div>
+                    <div class="action-desc">Threat detection</div>
+                </div>
+                <div class="action-btn" onclick="quickAction('breach_check')">
+                    <span class="action-icon">🔐</span>
+                    <div class="action-title">Breach Check</div>
+                    <div class="action-desc">Data breach search</div>
+                </div>
+            </div>
+            
+            <div class="chat-container">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message message-agent">
+                        <div class="message-label">System</div>
+                        <div class="message-content">🛡️ <strong>WebWatcher initialized.</strong> Ready to analyze security threats.</div>
+                    </div>
+                </div>
+                
+                <div class="chat-input-container">
+                    <div class="input-wrapper">
+                        <input type="text" id="chatInput" class="chat-input" placeholder="Enter URL, domain, email, or security query..." onkeypress="handleKeyPress(event)"/>
+                        <button class="send-btn" onclick="sendMessage()">Analyze</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="status-bar">
+            <div class="status-item"><span class="status-dot"></span><span>MCP Enabled</span></div>
+            <div class="status-item"><span class="status-dot"></span><span>A2A Protocol</span></div>
+            <div class="status-item"><span class="status-dot"></span><span>15 Security APIs</span></div>
+        </div>
+    </div>
+    
+    <script>
+        // Cache buster: v1764756696
+        const API_BASE = window.location.origin;
+        
+        function quickAction(action) {
+            const examples = {
+                'scan_url': 'Scan https://suspicious-site.com for threats',
+                'check_domain': 'Check domain reputation for example.com',
+                'analyze_email': 'Analyze email from sender@suspicious-domain.com',
+                'breach_check': 'Check if user@example.com has been breached'
+            };
+            document.getElementById('chatInput').value = examples[action];
+            document.getElementById('chatInput').focus();
+        }
+        
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') sendMessage();
+        }
+        
+        async function sendMessage() {
+            const input = document.getElementById('chatInput');
+            const message = input.value.trim();
+            if (!message) return;
+            
+            addMessage(message, 'user', false);
+            input.value = '';
+            
+            const loadingId = addMessage('Analyzing<span class="loading"></span>', 'agent', false);
+            
+            try {
+                const response = await fetch(`${API_BASE}/api/chat`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ message })
+                });
+                
+                const data = await response.json();
+                document.getElementById(loadingId).remove();
+                
+                if (data.response) {
+                    addMessage(data.response, 'agent', true);
+                } else if (data.error) {
+                    addMessage(`⚠️ Error: ${data.error}`, 'agent', false);
+                }
+            } catch (error) {
+                document.getElementById(loadingId).remove();
+                addMessage(`❌ Connection error: ${error.message}`, 'agent', false);
+            }
+        }
+        
+        function addMessage(content, type, isMarkdown) {
+            const messagesDiv = document.getElementById('chatMessages');
+            const messageId = 'msg-' + Date.now();
+            const messageDiv = document.createElement('div');
+            messageDiv.id = messageId;
+            messageDiv.className = `message message-${type}`;
+            const label = type === 'user' ? 'You' : 'WebWatcher';
+            
+            let processedContent = content;
+            if (isMarkdown && typeof marked !== 'undefined') {
+                processedContent = marked.parse(content);
+            }
+            
+            messageDiv.innerHTML = `<div class="message-label">${label}</div><div class="message-content">${processedContent}</div>`;
+            messagesDiv.appendChild(messageDiv);
+            messagesDiv.scrollTop = messagesDiv.scrollHeight;
+            
+            return messageId;
+        }
+        
+        window.addEventListener('load', () => {
+            document.getElementById('chatInput').focus();
+        });
+    </script>
+</body>
+</html>
