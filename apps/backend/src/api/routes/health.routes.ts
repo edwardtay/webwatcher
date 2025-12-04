@@ -16,7 +16,7 @@ router.get('/healthz', (_req, res) => {
 // Root page - API info
 router.get('/', (_req, res) => {
   if (serverConfig.nodeEnv === 'development' || serverConfig.serveFrontend) {
-    res.sendFile(path.join(process.cwd(), 'frontend', 'index.html'));
+    res.sendFile(path.join(process.cwd(), '..', 'frontend', 'index.html'));
   } else {
     res.status(200).json({
       service: 'WebWatcher API',

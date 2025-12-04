@@ -1,4 +1,4 @@
-# �️ WebWatcher - Cybersecurity Agent for Everyone
+# �️ WbebWatcher - Cybersecurity Intelligence Platform
 
 **WebWatcher** is an advanced cybersecurity agent that provides real-time threat analysis, breach detection, and comprehensive security scanning through AI-powered agents and multi-protocol integration.
 
@@ -7,14 +7,12 @@
 ### **Multi-Protocol Integration**
 - **MCP (Model Context Protocol)** - Real-time threat intelligence via Exa search
 - **A2A (Agent-to-Agent)** - Coordinated multi-agent security analysis
-- **Letta** - Autonomous learning and memory for continuous improvement
-- **15 Security APIs** - Comprehensive threat detection and analysis
+- **Multiple Security APIs** - Comprehensive threat detection and analysis
 
 ### 🤖 Intelligent Security Analysis
 - **Autonomous Detection**: Automatically identifies URLs, emails, and domains in queries
 - **Real-Time Intelligence**: Uses MCP for latest threat data and breach information
 - **Multi-Agent Coordination**: Specialized agents work together via A2A protocol
-- **Continuous Learning**: Letta integration for improving threat detection over time
 
 ### 🔍 Comprehensive Security Coverage
 - **URL & Domain Analysis**: Phishing detection, malware scanning, reputation checks
@@ -104,18 +102,18 @@
 - [Exa API Key](https://exa.ai/) (for MCP)
 - [URLScan.io API Key](https://urlscan.io/user/signup)
 - [AbuseIPDB API Key](https://www.abuseipdb.com/) (optional - 1,000 free requests/day)
-- [Letta API Key](https://www.letta.ai/) (optional)
 
 ### Installation
 
 1. Clone the repository:
 ```bash
 git clone <repository-url>
-cd webwatcher-backend
+cd webwatcher
 ```
 
-2. Install dependencies:
+2. Install backend dependencies:
 ```bash
+cd apps/backend
 npm install
 ```
 
@@ -124,7 +122,7 @@ npm install
 cp .env.example .env
 ```
 
-Edit `.env` and add your API keys:
+Edit `apps/backend/.env` and add your API keys:
 ```env
 OPENAI_API_KEY=your_openai_api_key
 GOOGLE_SAFE_BROWSING_API_KEY=your_gsb_key
@@ -133,19 +131,19 @@ HIBP_API_KEY=your_hibp_key
 EXA_API_KEY=your_exa_key
 URLSCAN_API_KEY=your_urlscan_key
 ABUSEIPDB_API_KEY=your_abuseipdb_key
-LETTA_API_KEY=your_letta_key
-LETTA_BASE_URL=https://api.letta.ai
 ```
 
 ### Running the Application
 
 #### Development Mode
 ```bash
+cd apps/backend
 npm run dev:server
 ```
 
 #### Production Mode
 ```bash
+cd apps/backend
 npm run build
 npm start
 ```
@@ -254,28 +252,70 @@ webwatcher/                      # Monorepo root
 ├── apps/                        # Runnable applications
 │   ├── backend/                 # Backend service (Cloud Run)
 │   │   ├── src/
-│   │   │   ├── api/             # API layer
+│   │   │   ├── api/
+│   │   │   │   ├── controllers/ # Request handlers
+│   │   │   │   ├── routes/      # API routes
+│   │   │   │   └── middleware/  # CORS, validation, error handling
 │   │   │   ├── services/        # Business logic
+│   │   │   │   ├── agent.service.ts
+│   │   │   │   ├── url-security.service.ts
+│   │   │   │   ├── threat-intel.service.ts
+│   │   │   │   ├── incident.service.ts
+│   │   │   │   └── policy.service.ts
 │   │   │   ├── utils/           # Utilities
+│   │   │   │   ├── manual-tools.ts
+│   │   │   │   ├── letta-client.ts
+│   │   │   │   └── logger.ts
 │   │   │   ├── config/          # Configuration
-│   │   │   └── server.ts        # Main entry
-│   │   ├── Dockerfile
-│   │   └── package.json
+│   │   │   │   ├── server.config.ts
+│   │   │   │   └── agent.config.ts
+│   │   │   ├── types/           # TypeScript types
+│   │   │   ├── integrations/    # External integrations
+│   │   │   └── server.ts        # Main server entry
+│   │   ├── configs/             # Config files
+│   │   ├── data/                # Runtime data
+│   │   ├── docs/                # Backend docs
+│   │   ├── scripts/             # Backend scripts
+│   │   ├── tests/               # Tests
+│   │   ├── tools/               # Development tools
+│   │   ├── Dockerfile           # Container config
+│   │   ├── package.json
+│   │   └── tsconfig.json
 │   └── frontend/                # Frontend (Vercel)
-│       ├── index.html
-│       ├── js/
-│       └── vercel.json
-├── packages/mcp/                # MCP implementations
-├── infra/cloudrun/              # Infrastructure
-├── scripts/                     # Deployment scripts
+│       ├── api/                 # Vercel serverless functions
+│       ├── js/                  # JavaScript files
+│       ├── index.html           # Main web interface
+│       ├── package.json
+│       ├── vercel.json          # Vercel config
+│       └── _vercel_build.sh     # Build script
+├── packages/                    # Shared packages
+│   └── mcp/                     # MCP server implementations
+│       ├── exa-mcp.ts
+│       └── webwatcher-mcp.ts
+├── infra/                       # Infrastructure as code
+│   └── cloudrun/
+│       └── cloudbuild.yaml
+├── scripts/                     # Deployment & utility scripts
+│   ├── deploy-cloudrun.sh
+│   ├── set-cloudrun-env.sh
+│   ├── simulate-cloudrun-deploy.sh
+│   └── start-server.sh
 ├── docs/                        # Documentation
-├── data/incidents/              # Incident reports
+│   ├── architecture.md
+│   └── monorepo-guide.md
+├── data/                        # Application data
+│   └── incidents/               # Incident reports (JSON)
 ├── private/                     # Private files (gitignored)
-├── cloudbuild.yaml
-├── package.json                 # Monorepo root
-└── tsconfig.base.json
+│   ├── configs/                 # Private configs
+│   ├── data/                    # Private data
+│   ├── docs/                    # Internal docs
+│   ├── keys/                    # API keys
+│   └── logs/                    # Log files
+├── cloudbuild.yaml              # Cloud Build config
+├── package.json                 # Monorepo root config
+├── tsconfig.base.json           # Shared TypeScript config
+└── agent-manifest.json          # Agent metadata
 ```
-
 
 ## 🛠️ Development
 
@@ -297,8 +337,6 @@ webwatcher/                      # Monorepo root
 | `EXA_API_KEY` | Exa search (MCP) | Yes |
 | `URLSCAN_API_KEY` | URLScan.io API | Yes |
 | `ABUSEIPDB_API_KEY` | AbuseIPDB (IP abuse detection) | No |
-| `LETTA_API_KEY` | Letta learning | No |
-| `LETTA_BASE_URL` | Letta API URL | No |
 
 ## 📊 Features in Detail
 
@@ -338,7 +376,6 @@ Apache-2.0
 - Built with LangChain and OpenAI
 - Integrated with HaveIBeenPwned, VirusTotal, Google Safe Browsing
 - MCP protocol via Exa
-- Letta for autonomous learning
 
 ## 🔗 Resources
 
@@ -346,7 +383,6 @@ Apache-2.0
 - [Google Safe Browsing](https://developers.google.com/safe-browsing)
 - [VirusTotal API](https://developers.virustotal.com/)
 - [Exa Search](https://exa.ai/)
-- [Letta](https://www.letta.ai/)
 
 ---
 
