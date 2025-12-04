@@ -82,34 +82,76 @@ router.get('/capabilities', (_req, res) => {
 // Agent card for A2A discovery
 router.get('/.well-known/agent.json', (_req, res) => {
   const agentCard = {
-    id: 'webwatcher-phish-checker',
-    name: 'WebWatcher Phishing URL Checker',
-    description: 'Cybersecurity agent that inspects a URL and reports phishing red flags using an internal A2A pipeline.',
-    version: '1.0.0',
+    id: 'webwatcher-cybersecurity-agent',
+    name: 'WebWatcher Cybersecurity Intelligence Platform',
+    description: 'Advanced cybersecurity agent providing real-time threat analysis, breach detection, URL/domain scanning, email security analysis, and comprehensive security intelligence through AI-powered multi-agent coordination.',
+    version: '2.0.0',
     author: {
-      name: 'NetWatch Team',
+      name: 'Lever Labs',
       contact: 'https://github.com/edwardtay/webwatcher',
     },
     license: 'Apache-2.0',
     repository: 'https://github.com/edwardtay/webwatcher',
-    tags: ['cybersecurity', 'phishing', 'url-analysis', 'security', 'a2a', 'mcp'],
-    agentUrl: serverConfig.agentBaseUrl,
+    tags: ['cybersecurity', 'threat-intelligence', 'phishing-detection', 'breach-checking', 'url-scanning', 'domain-analysis', 'email-security', 'malware-detection', 'a2a', 'mcp'],
+    url: serverConfig.agentBaseUrl,
     baseUrl: serverConfig.agentBaseUrl,
     protocols: ['A2A', 'MCP', 'HTTP'],
     capabilities: {
       functions: [
         {
-          name: 'checkUrl',
-          description: 'Analyze a URL and return phishing red flags using A2A coordination.',
+          name: 'scanUrl',
+          description: 'Comprehensive URL security scan including phishing detection, malware scanning, redirect chain analysis, TLS/SSL validation, and multi-source reputation checking.',
           inputSchema: {
             type: 'object',
             properties: {
               url: {
                 type: 'string',
-                description: 'URL to analyze for phishing indicators.',
+                description: 'URL to scan for security threats and phishing indicators.',
               },
             },
             required: ['url'],
+          },
+        },
+        {
+          name: 'checkDomain',
+          description: 'Domain intelligence analysis including WHOIS data, domain age, registrar verification, IP risk profiling, hosting provider analysis, and suspicious TLD detection.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              domain: {
+                type: 'string',
+                description: 'Domain name to analyze (e.g., example.com).',
+              },
+            },
+            required: ['domain'],
+          },
+        },
+        {
+          name: 'analyzeEmail',
+          description: 'Email security analysis including phishing pattern detection, sender reputation analysis, URL extraction and scanning, and latest phishing campaign intelligence.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              email: {
+                type: 'string',
+                description: 'Email address or email content to analyze for phishing and security threats.',
+              },
+            },
+            required: ['email'],
+          },
+        },
+        {
+          name: 'breachCheck',
+          description: 'Data breach detection using HaveIBeenPwned API to check for credential leaks, breach history, risk scoring, and exposed data type identification.',
+          inputSchema: {
+            type: 'object',
+            properties: {
+              email: {
+                type: 'string',
+                description: 'Email address to check for data breaches and credential leaks.',
+              },
+            },
+            required: ['email'],
           },
         },
       ],
@@ -125,20 +167,36 @@ router.get('/.well-known/agent.json', (_req, res) => {
           'threat_analysis',
           'remediation',
           'url_analysis',
+          'domain_intelligence',
+          'email_security',
+          'breach_detection',
+          'malware_scanning',
         ],
-        canCoordinateWith: ['scanner', 'triage', 'fix', 'governance'],
+        canCoordinateWith: ['scanner', 'triage', 'fix', 'governance', 'threat_intel', 'incident_response'],
         internalAgents: [
           {
-            name: 'UrlFeatureAgent',
-            role: 'Extract URL features and structural analysis',
-          },
-          {
             name: 'UrlScanAgent',
-            role: 'Call urlscan.io API for security scanning',
+            role: 'URL security scanning via URLScan.io API and redirect chain analysis',
           },
           {
-            name: 'PhishingRedFlagAgent',
-            role: 'Analyze and flag phishing indicators',
+            name: 'ThreatIntelAgent',
+            role: 'Multi-source threat intelligence via Google Safe Browsing, VirusTotal, and Exa MCP',
+          },
+          {
+            name: 'PhishingDetectorAgent',
+            role: 'Phishing pattern detection and red flag analysis',
+          },
+          {
+            name: 'HaveIBeenPwnedAgent',
+            role: 'Data breach detection and credential leak checking',
+          },
+          {
+            name: 'DomainIntelAgent',
+            role: 'WHOIS analysis, domain age verification, and registrar checks',
+          },
+          {
+            name: 'RiskAssessmentAgent',
+            role: 'Risk scoring, policy compliance, and incident report generation',
           },
         ],
       },
@@ -147,23 +205,68 @@ router.get('/.well-known/agent.json', (_req, res) => {
         servers: [
           {
             name: 'exa-mcp',
-            description: 'Exa AI semantic web search via MCP',
+            description: 'Exa AI semantic web search for real-time threat intelligence and latest phishing campaigns',
             transport: ['stdio', 'http'],
             tools: ['exa_search'],
           },
         ],
       },
+      securityApis: {
+        googleSafeBrowsing: 'Malware and phishing detection',
+        virusTotal: 'Multi-engine malware scanning',
+        haveIBeenPwned: 'Breach detection database (235+ breaches)',
+        urlScanIO: 'URL scanning and screenshots',
+        abuseIPDB: 'IP abuse detection',
+        rdap: 'WHOIS data and domain intelligence',
+        dnsOverHttps: 'DNS intelligence via Google DNS',
+      },
+      riskScoring: {
+        low: '0-24 (Green)',
+        medium: '25-49 (Yellow)',
+        high: '50-74 (Orange)',
+        critical: '75-100 (Red)',
+      },
     },
     endpoints: {
-      checkUrl: {
-        method: 'POST',
-        path: '/check',
-        description: 'A2A endpoint for URL phishing analysis',
-      },
       chat: {
         method: 'POST',
         path: '/api/chat',
-        description: 'General chat endpoint with MCP and A2A support',
+        description: 'Natural language security analysis with automatic intent detection',
+      },
+      comprehensiveScan: {
+        method: 'POST',
+        path: '/api/security/comprehensive-scan',
+        description: 'Full security scan with all layers (URL, threat intel, policy, incident)',
+      },
+      urlScan: {
+        method: 'POST',
+        path: '/api/security/scan-page-content',
+        description: 'URL and page content security analysis',
+      },
+      domainCheck: {
+        method: 'POST',
+        path: '/api/security/check-whois',
+        description: 'Domain intelligence and WHOIS analysis',
+      },
+      breachCheck: {
+        method: 'POST',
+        path: '/api/security/breach-check',
+        description: 'HaveIBeenPwned breach detection',
+      },
+      reputationLookup: {
+        method: 'POST',
+        path: '/api/security/lookup-reputation',
+        description: 'Multi-source reputation checking',
+      },
+      riskScore: {
+        method: 'POST',
+        path: '/api/security/calculate-risk-score',
+        description: 'Calculate comprehensive risk score',
+      },
+      incidentReport: {
+        method: 'POST',
+        path: '/api/security/generate-incident-report',
+        description: 'Generate detailed incident report',
       },
       health: {
         method: 'GET',
