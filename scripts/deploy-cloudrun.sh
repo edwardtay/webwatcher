@@ -30,6 +30,9 @@ docker push $IMAGE_NAME
 echo ""
 echo "🚀 Deploying to Cloud Run..."
 
+# Go back to project root to read .env
+cd ../..
+
 # Check if .env file exists
 if [ -f apps/backend/.env ]; then
   echo "📝 Loading environment variables from apps/backend/.env..."
