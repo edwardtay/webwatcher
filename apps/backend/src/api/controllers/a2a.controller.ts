@@ -76,31 +76,36 @@ async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<
   try {
     let result: any;
 
-    // Route to appropriate method handler
-    switch (method) {
-      case 'scanUrl':
-        result = await handleScanUrl(params);
-        break;
-      
-      case 'checkDomain':
-        result = await handleCheckDomain(params);
-        break;
-      
-      case 'analyzeEmail':
-        result = await handleAnalyzeEmail(params);
-        break;
-      
-      case 'breachCheck':
-        result = await handleBreachCheck(params);
-        break;
-      
-      default:
-        res.status(200).json(createErrorResponse(
-          a2aRequest.id,
-          -32601,
-          `Method not found: '${method}'`
-        ));
-        return;
+    // A2A protocol uses message/send as the wrapper method
+    if (method === 'message/send') {
+      result = await handleMessageSend(params);
+    } else {
+      // Direct skill calls (for backward compatibility)
+      switch (method) {
+        case 'scanUrl':
+          result = await handleScanUrl(params);
+          break;
+        
+        case 'checkDomain':
+          result = await handleCheckDomain(params);
+          break;
+        
+        case 'analyzeEmail':
+          result = await handleAnalyzeEmail(params);
+          break;
+        
+        case 'breachCheck':
+          result = await handleBreachCheck(params);
+          break;
+        
+        default:
+          res.status(200).json(createErrorResponse(
+            a2aRequest.id,
+            -32601,
+            `Method not found: '${method}'`
+          ));
+          return;
+      }
     }
 
     // Send success response
@@ -114,6 +119,57 @@ async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<
       { method, error: error.toString() }
     ));
   }
+}
+
+// A2A message/send handler - wraps skill execution
+async function handleMessageSend(params: any): Promise<any> {
+  if (!params?.skill) {
+    throw new Error('Missing required parameter: skill');
+  }
+
+  const { skill, message } = params;
+  
+  // Extract data from message parts
+  let skillParams: any = {};
+  if (message?.parts && Array.isArray(message.parts)) {
+    for (const part of message.parts) {
+      if (part.kind === 'data' && part.data) {
+        skillParams = { ...skillParams, ...part.data };
+      }
+    }
+  }
+
+  // Execute the skill
+  let skillResult: any;
+  switch (skill) {
+    case 'scanUrl':
+      skillResult = await handleScanUrl(skillParams);
+      break;
+    
+    case 'checkDomain':
+      skillResult = await handleCheckDomain(skillParams);
+      break;
+    
+    case 'analyzeEmail':
+      skillResult = await handleAnalyzeEmail(skillParams);
+      break;
+    
+    case 'breachCheck':
+      skillResult = await handleBreachCheck(skillParams);
+      break;
+    
+    default:
+      throw new Error(`Unknown skill: ${skill}`);
+  }
+
+  // Return as a task object (A2A format)
+  return {
+    task: {
+      id: `task-${Date.now()}`,
+      status: 'completed',
+      result: skillResult,
+    },
+  };
 }
 
 // Tool handlers
