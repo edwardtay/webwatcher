@@ -13,7 +13,7 @@ const router = Router();
 // Mount routes
 router.use('/api', chatRoutes);
 router.use('/api', securityRoutes);
-router.use('/api', a2aRoutes);
+router.use('/', a2aRoutes);  // A2A at root level: /a2a
 router.use('/', urlRoutes);
 router.use('/', healthRoutes);
 

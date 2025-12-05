@@ -212,7 +212,7 @@ router.get('/.well-known/agent.json', (_req, res) => {
       protocols: {
         a2a: {
           version: '0.2.6',
-          endpoint: '/api/a2a',
+          endpoint: '/a2a',
           supportedMessageTypes: ['request', 'response', 'error', 'notification'],
           authentication: {
             required: false,

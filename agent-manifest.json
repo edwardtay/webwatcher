@@ -23,12 +23,12 @@
     "health": "/healthz",
     "chat": "/api/chat",
     "security": "/api/security",
-    "a2a": "/api/a2a",
+    "a2a": "/a2a",
     "agentCard": "/.well-known/agent.json"
   },
   "a2a": {
     "version": "0.2.6",
-    "endpoint": "/api/a2a",
+    "endpoint": "/a2a",
     "agentCard": "/.well-known/agent.json",
     "protocol": "http",
     "format": "json",
@@ -136,7 +136,7 @@
       "enabled": true,
       "version": "0.2.6",
       "coordination": "automatic",
-      "endpoint": "/api/a2a",
+      "endpoint": "/a2a",
       "agentCard": "/.well-known/agent.json"
     },
     "mcp": {
