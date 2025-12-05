@@ -3,7 +3,10 @@
  */
 
 const Config = {
-  API_BASE: window.location.origin,
+  // Use Cloud Run backend URL for production, or local origin for development
+  API_BASE: window.location.hostname === 'localhost' 
+    ? window.location.origin 
+    : 'https://webwatcher-ucxwlmpe3q-uc.a.run.app',
   
   ENDPOINTS: {
     CHAT: '/api/chat',
