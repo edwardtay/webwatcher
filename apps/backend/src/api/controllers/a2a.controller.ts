@@ -208,9 +208,12 @@ async function handleMessageSend(params: any): Promise<any> {
     };
   }
 
-  // Return in A2A v0.2.6 format
-  // The response should be a Message object, not a task wrapper
+  // Return in A2A v0.2.6 format - Direct message response
+  // This is the simplest format: just return a Message object
   return {
+    messageId: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+    contextId: message?.messageId || `ctx-${Date.now()}`,
+    kind: 'message',
     role: 'assistant',
     parts: [
       {
@@ -221,6 +224,7 @@ async function handleMessageSend(params: any): Promise<any> {
         },
       },
     ],
+    metadata: {},
   };
 }
 
