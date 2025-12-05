@@ -170,34 +170,49 @@ async function handleMessageSend(params: any): Promise<any> {
   
   logger.info('Routing to skill:', { skill, extractedParams: Object.keys(skillParams) });
 
-  // Execute the skill
+  // Execute the skill with error handling
   let skillResult: any;
-  switch (skill) {
-    case 'scanUrl':
-      skillResult = await handleScanUrl(skillParams);
-      break;
+  let taskStatus = 'completed';
+  
+  try {
+    switch (skill) {
+      case 'scanUrl':
+        skillResult = await handleScanUrl(skillParams);
+        break;
+      
+      case 'checkDomain':
+        skillResult = await handleCheckDomain(skillParams);
+        break;
+      
+      case 'analyzeEmail':
+        skillResult = await handleAnalyzeEmail(skillParams);
+        break;
+      
+      case 'breachCheck':
+        skillResult = await handleBreachCheck(skillParams);
+        break;
+      
+      default:
+        throw new Error(`Unknown skill: ${skill}`);
+    }
+  } catch (error: any) {
+    // Handle errors gracefully - return a helpful response instead of throwing
+    logger.error('Skill execution error:', { skill, error: error.message });
     
-    case 'checkDomain':
-      skillResult = await handleCheckDomain(skillParams);
-      break;
-    
-    case 'analyzeEmail':
-      skillResult = await handleAnalyzeEmail(skillParams);
-      break;
-    
-    case 'breachCheck':
-      skillResult = await handleBreachCheck(skillParams);
-      break;
-    
-    default:
-      throw new Error(`Unknown skill: ${skill}`);
+    taskStatus = 'failed';
+    skillResult = {
+      error: true,
+      message: getHelpfulErrorMessage(error, skill, skillParams),
+      suggestion: getSuggestionForInput(skillParams._textContent),
+      acceptedInputs: getAcceptedInputsForSkill(skill),
+    };
   }
 
   // Return as a task object (A2A format)
   return {
     task: {
       id: `task-${Date.now()}`,
-      status: 'completed',
+      status: taskStatus,
       result: skillResult,
     },
   };
@@ -470,5 +485,85 @@ function createErrorResponse(
       data,
     },
     id: id ?? null,
+  };
+}
+
+// Helper function to provide user-friendly error messages
+function getHelpfulErrorMessage(error: any, skill: string, params: any): string {
+  const errorMsg = error.message || error.toString();
+  
+  // DNS/Network errors
+  if (errorMsg.includes('ENOTFOUND') || errorMsg.includes('getaddrinfo')) {
+    const url = params.url || 'unknown';
+    return `The domain "${url}" could not be found. Please check if it's a valid domain or URL.`;
+  }
+  
+  // Connection errors
+  if (errorMsg.includes('ECONNREFUSED') || errorMsg.includes('ECONNRESET')) {
+    return `Could not connect to the specified URL. The server may be down or unreachable.`;
+  }
+  
+  // Timeout errors
+  if (errorMsg.includes('timeout') || errorMsg.includes('ETIMEDOUT')) {
+    return `The request timed out. The server took too long to respond.`;
+  }
+  
+  // Invalid URL errors
+  if (errorMsg.includes('Invalid URL')) {
+    return `The provided input is not a valid URL format.`;
+  }
+  
+  // Missing parameter errors
+  if (errorMsg.includes('Missing required parameter')) {
+    return errorMsg;
+  }
+  
+  // Generic error
+  return `An error occurred while processing your request: ${errorMsg}`;
+}
+
+// Helper function to suggest correct input format
+function getSuggestionForInput(text: string): string {
+  if (!text) {
+    return 'Please provide a URL (e.g., google.com, https://example.com), email address, or domain name.';
+  }
+  
+  // If text doesn't look like a URL/email/domain
+  if (!text.includes('.') && !text.includes('@') && !text.startsWith('http')) {
+    return 'Your input doesn\'t appear to be a URL, email, or domain. Try: "google.com", "test@example.com", or "https://example.com"';
+  }
+  
+  return 'Try providing a complete URL with protocol (e.g., https://example.com) or a valid domain name.';
+}
+
+// Helper function to list accepted inputs for each skill
+function getAcceptedInputsForSkill(skill: string): any {
+  const inputs: Record<string, any> = {
+    scanUrl: {
+      description: 'URL Security Scan',
+      examples: ['https://google.com', 'example.com', 'http://test.com'],
+      format: 'A valid URL or domain name',
+    },
+    checkDomain: {
+      description: 'Domain Intelligence',
+      examples: ['google.com', 'example.org', 'test.io'],
+      format: 'A domain name without protocol',
+    },
+    analyzeEmail: {
+      description: 'Email Security Analysis',
+      examples: ['user@example.com', 'test@gmail.com'],
+      format: 'A valid email address',
+    },
+    breachCheck: {
+      description: 'Data Breach Check',
+      examples: ['user@example.com', 'test@gmail.com'],
+      format: 'A valid email address',
+    },
+  };
+  
+  return inputs[skill] || {
+    description: 'Unknown skill',
+    examples: [],
+    format: 'Please check the skill documentation',
   };
 }
