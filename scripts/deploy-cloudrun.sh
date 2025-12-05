@@ -29,19 +29,42 @@ docker push $IMAGE_NAME
 
 echo ""
 echo "🚀 Deploying to Cloud Run..."
-gcloud run deploy $SERVICE_NAME \
-  --image $IMAGE_NAME \
-  --region $REGION \
-  --project $PROJECT_ID \
-  --platform managed \
-  --allow-unauthenticated \
-  --port 8080 \
-  --memory 1Gi \
-  --cpu 1 \
-  --timeout 300 \
-  --max-instances 10 \
-  --min-instances 0 \
-  --set-env-vars NODE_ENV=production
+
+# Check if .env file exists
+if [ -f apps/backend/.env ]; then
+  echo "📝 Loading environment variables from apps/backend/.env..."
+  # Read .env and convert to comma-separated format
+  ENV_VARS=$(grep -v '^#' apps/backend/.env | grep -v '^$' | tr '\n' ',' | sed 's/,$//')
+  
+  gcloud run deploy $SERVICE_NAME \
+    --image $IMAGE_NAME \
+    --region $REGION \
+    --project $PROJECT_ID \
+    --platform managed \
+    --allow-unauthenticated \
+    --port 8080 \
+    --memory 1Gi \
+    --cpu 1 \
+    --timeout 300 \
+    --max-instances 10 \
+    --min-instances 0 \
+    --set-env-vars "NODE_ENV=production,$ENV_VARS"
+else
+  echo "⚠️  No .env file found, deploying without API keys..."
+  gcloud run deploy $SERVICE_NAME \
+    --image $IMAGE_NAME \
+    --region $REGION \
+    --project $PROJECT_ID \
+    --platform managed \
+    --allow-unauthenticated \
+    --port 8080 \
+    --memory 1Gi \
+    --cpu 1 \
+    --timeout 300 \
+    --max-instances 10 \
+    --min-instances 0 \
+    --set-env-vars NODE_ENV=production
+fi
 
 echo ""
 echo "✅ Deployment complete!"
