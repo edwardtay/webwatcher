@@ -100,10 +100,23 @@ router.get('/.well-known/agent.json', (_req, res) => {
     id: 'webwatcher-cybersecurity-agent',
     repository: 'https://github.com/edwardtay/webwatcher',
     tags: ['cybersecurity', 'threat-intelligence', 'phishing-detection', 'breach-checking', 'url-scanning', 'domain-analysis', 'email-security', 'malware-detection', 'a2a', 'mcp'],
+    // A2A v0.2.6 default modes
+    defaultInputModes: ['application/json'],
+    defaultOutputModes: ['application/json'],
+    
+    // A2A v0.2.6 security schemes
+    securitySchemes: {
+      none: {
+        type: 'none',
+        description: 'No authentication required for public endpoints',
+      },
+    },
+    security: ['none'],
+    
     // A2A v0.2.6 capabilities structure
     capabilities: {
-      // Tools/functions the agent can perform
-      tools: [
+      // Skills the agent can perform (A2A v0.2.6 uses 'skills' not 'tools')
+      skills: [
         {
           name: 'scanUrl',
           description: 'Comprehensive URL security scan including phishing detection, malware scanning, redirect chain analysis, TLS/SSL validation, and multi-source reputation checking.',
