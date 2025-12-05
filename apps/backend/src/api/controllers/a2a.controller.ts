@@ -208,13 +208,19 @@ async function handleMessageSend(params: any): Promise<any> {
     };
   }
 
-  // Return as a task object (A2A format)
+  // Return in A2A v0.2.6 format
+  // The response should be a Message object, not a task wrapper
   return {
-    task: {
-      id: `task-${Date.now()}`,
-      status: taskStatus,
-      result: skillResult,
-    },
+    role: 'assistant',
+    parts: [
+      {
+        kind: 'data',
+        data: {
+          status: taskStatus,
+          result: skillResult,
+        },
+      },
+    ],
   };
 }
 
