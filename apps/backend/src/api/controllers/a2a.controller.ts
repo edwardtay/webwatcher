@@ -230,23 +230,19 @@ function extractParametersFromText(params: any): void {
     }
   }
   
-  // Try to extract domain from text
-  if (!params.domain && !params.url && !params.email) {
-    const domainMatch = text.match(/\b([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\b/i);
-    if (domainMatch) {
-      params.domain = domainMatch[0];
-      logger.info('Extracted domain from text:', params.domain);
-      return; // Found domain, done
-    }
-  }
-  
   // Fallback: If text looks like a URL/domain but didn't match patterns above
   // This handles cases like "example.com" without http:// or plain text URLs
+  // Prefer treating as URL (for scanning) rather than domain (for WHOIS)
   if (!params.url && !params.email && !params.domain) {
     // Check if it's a simple domain-like string
     if (text.includes('.') && !text.includes(' ') && text.length < 200) {
-      // Assume it's a URL and add protocol if missing
-      if (!text.startsWith('http://') && !text.startsWith('https://')) {
+      // Check if it looks like a domain
+      const domainMatch = text.match(/^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i);
+      if (domainMatch) {
+        // Plain domain - treat as URL for scanning (more useful than WHOIS)
+        params.url = 'https://' + text;
+        logger.info('Fallback: treating plain domain as URL for scanning:', params.url);
+      } else if (!text.startsWith('http://') && !text.startsWith('https://')) {
         params.url = 'https://' + text;
         logger.info('Fallback: treating text as URL with https://', params.url);
       } else {
