@@ -7,147 +7,111 @@ import { logger } from '../../utils/logger';
 import * as urlSecurityService from '../../services/url-security.service';
 import * as threatIntelService from '../../services/threat-intel.service';
 
+// JSON-RPC 2.0 request format (A2A v0.2.6 requirement)
 interface A2ARequest {
-  id?: string;
-  type: 'request' | 'response' | 'error' | 'notification';
-  from?: {
-    agentId: string;
-    url?: string;
-  };
-  to?: {
-    agentId: string;
-    url?: string;
-  };
-  tool?: string;
-  parameters?: Record<string, any>;
-  timestamp?: string;
+  jsonrpc: '2.0';
+  method: string;
+  params?: Record<string, any>;
+  id?: string | number;
 }
 
+// JSON-RPC 2.0 response format
 interface A2AResponse {
-  id?: string;
-  type: 'response' | 'error';
-  from: {
-    agentId: string;
-    url: string;
-  };
-  to?: {
-    agentId: string;
-    url?: string;
-  };
+  jsonrpc: '2.0';
   result?: any;
   error?: {
-    code: string;
+    code: number;
     message: string;
-    details?: any;
+    data?: any;
   };
-  timestamp: string;
+  id: string | number | null;
 }
 
 export async function handleA2ARequest(req: Request, res: Response): Promise<void> {
   try {
     const a2aRequest: A2ARequest = req.body;
     
-    logger.info('A2A request received:', {
+    logger.info('A2A JSON-RPC request received:', {
+      jsonrpc: a2aRequest.jsonrpc,
+      method: a2aRequest.method,
       id: a2aRequest.id,
-      type: a2aRequest.type,
-      tool: a2aRequest.tool,
-      from: a2aRequest.from?.agentId,
     });
 
-    // Validate request
-    if (!a2aRequest.type) {
+    // Validate JSON-RPC 2.0 format
+    if (a2aRequest.jsonrpc !== '2.0') {
       res.status(400).json(createErrorResponse(
-        a2aRequest,
-        'INVALID_REQUEST',
-        'Missing required field: type'
+        a2aRequest.id,
+        -32600,
+        'Invalid Request: jsonrpc must be "2.0"'
       ));
       return;
     }
 
-    // Handle different message types
-    switch (a2aRequest.type) {
-      case 'request':
-        await handleToolRequest(a2aRequest, res);
-        break;
-      
-      case 'notification':
-        // Acknowledge notification
-        res.status(200).json({
-          type: 'response',
-          id: a2aRequest.id,
-          status: 'acknowledged',
-          timestamp: new Date().toISOString(),
-        });
-        break;
-      
-      default:
-        res.status(400).json(createErrorResponse(
-          a2aRequest,
-          'UNSUPPORTED_TYPE',
-          `Message type '${a2aRequest.type}' is not supported`
-        ));
+    if (!a2aRequest.method) {
+      res.status(400).json(createErrorResponse(
+        a2aRequest.id,
+        -32600,
+        'Invalid Request: method is required'
+      ));
+      return;
     }
+
+    // Handle method call
+    await handleMethodCall(a2aRequest, res);
+    
   } catch (error: any) {
     logger.error('A2A request error:', error);
     res.status(500).json(createErrorResponse(
-      req.body,
-      'INTERNAL_ERROR',
-      error.message || 'Internal server error'
+      req.body.id,
+      -32603,
+      'Internal error',
+      error.message
     ));
   }
 }
 
-async function handleToolRequest(a2aRequest: A2ARequest, res: Response): Promise<void> {
-  const { tool, parameters } = a2aRequest;
-
-  if (!tool) {
-    res.status(400).json(createErrorResponse(
-      a2aRequest,
-      'MISSING_TOOL',
-      'Tool name is required for request type'
-    ));
-    return;
-  }
+async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<void> {
+  const { method, params } = a2aRequest;
 
   try {
     let result: any;
 
-    // Route to appropriate tool handler
-    switch (tool) {
+    // Route to appropriate method handler
+    switch (method) {
       case 'scanUrl':
-        result = await handleScanUrl(parameters);
+        result = await handleScanUrl(params);
         break;
       
       case 'checkDomain':
-        result = await handleCheckDomain(parameters);
+        result = await handleCheckDomain(params);
         break;
       
       case 'analyzeEmail':
-        result = await handleAnalyzeEmail(parameters);
+        result = await handleAnalyzeEmail(params);
         break;
       
       case 'breachCheck':
-        result = await handleBreachCheck(parameters);
+        result = await handleBreachCheck(params);
         break;
       
       default:
-        res.status(404).json(createErrorResponse(
-          a2aRequest,
-          'TOOL_NOT_FOUND',
-          `Tool '${tool}' is not available`
+        res.status(200).json(createErrorResponse(
+          a2aRequest.id,
+          -32601,
+          `Method not found: '${method}'`
         ));
         return;
     }
 
     // Send success response
-    res.status(200).json(createSuccessResponse(a2aRequest, result));
+    res.status(200).json(createSuccessResponse(a2aRequest.id, result));
   } catch (error: any) {
-    logger.error(`Tool execution error (${tool}):`, error);
-    res.status(500).json(createErrorResponse(
-      a2aRequest,
-      'TOOL_EXECUTION_ERROR',
-      error.message || 'Tool execution failed',
-      { tool, error: error.toString() }
+    logger.error(`Method execution error (${method}):`, error);
+    res.status(200).json(createErrorResponse(
+      a2aRequest.id,
+      -32603,
+      error.message || 'Internal error',
+      { method, error: error.toString() }
     ));
   }
 }
@@ -294,40 +258,28 @@ async function handleBreachCheck(parameters: any): Promise<any> {
   };
 }
 
-// Helper functions
-function createSuccessResponse(request: A2ARequest, result: any): A2AResponse {
+// Helper functions for JSON-RPC 2.0 responses
+function createSuccessResponse(id: string | number | null | undefined, result: any): A2AResponse {
   return {
-    id: request.id,
-    type: 'response',
-    from: {
-      agentId: 'webwatcher-cybersecurity-agent',
-      url: process.env.AGENT_BASE_URL || 'https://webwatcher.lever-labs.com',
-    },
-    to: request.from,
+    jsonrpc: '2.0',
     result,
-    timestamp: new Date().toISOString(),
+    id: id ?? null,
   };
 }
 
 function createErrorResponse(
-  request: A2ARequest,
-  code: string,
+  id: string | number | null | undefined,
+  code: number,
   message: string,
-  details?: any
+  data?: any
 ): A2AResponse {
   return {
-    id: request.id,
-    type: 'error',
-    from: {
-      agentId: 'webwatcher-cybersecurity-agent',
-      url: process.env.AGENT_BASE_URL || 'https://webwatcher.lever-labs.com',
-    },
-    to: request.from,
+    jsonrpc: '2.0',
     error: {
       code,
       message,
-      details,
+      data,
     },
-    timestamp: new Date().toISOString(),
+    id: id ?? null,
   };
 }
