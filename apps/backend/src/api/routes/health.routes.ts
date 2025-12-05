@@ -107,8 +107,12 @@ router.get('/.well-known/agent.json', (_req, res) => {
     // A2A v0.2.6 skills (top-level field)
     skills: [
         {
+          id: 'scanUrl',
           name: 'scanUrl',
           description: 'Comprehensive URL security scan including phishing detection, malware scanning, redirect chain analysis, TLS/SSL validation, and multi-source reputation checking.',
+          tags: ['security', 'url', 'scan', 'phishing', 'malware'],
+          inputModes: ['application/json'],
+          outputModes: ['application/json'],
           inputSchema: {
             type: 'object',
             properties: {
@@ -130,8 +134,12 @@ router.get('/.well-known/agent.json', (_req, res) => {
           },
         },
         {
+          id: 'checkDomain',
           name: 'checkDomain',
           description: 'Domain intelligence analysis including WHOIS data, domain age, registrar verification, IP risk profiling, hosting provider analysis, and suspicious TLD detection.',
+          tags: ['security', 'domain', 'whois', 'intelligence', 'reputation'],
+          inputModes: ['application/json'],
+          outputModes: ['application/json'],
           inputSchema: {
             type: 'object',
             properties: {
@@ -153,8 +161,12 @@ router.get('/.well-known/agent.json', (_req, res) => {
           },
         },
         {
+          id: 'analyzeEmail',
           name: 'analyzeEmail',
           description: 'Email security analysis including phishing pattern detection, sender reputation analysis, URL extraction and scanning, and latest phishing campaign intelligence.',
+          tags: ['security', 'email', 'phishing', 'analysis', 'threat-detection'],
+          inputModes: ['application/json'],
+          outputModes: ['application/json'],
           inputSchema: {
             type: 'object',
             properties: {
@@ -175,8 +187,12 @@ router.get('/.well-known/agent.json', (_req, res) => {
           },
         },
         {
+          id: 'breachCheck',
           name: 'breachCheck',
           description: 'Data breach detection using HaveIBeenPwned API to check for credential leaks, breach history, risk scoring, and exposed data type identification.',
+          tags: ['security', 'breach', 'credentials', 'haveibeenpwned', 'leak-detection'],
+          inputModes: ['application/json'],
+          outputModes: ['application/json'],
           inputSchema: {
             type: 'object',
             properties: {
