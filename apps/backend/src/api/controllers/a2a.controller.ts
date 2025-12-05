@@ -214,14 +214,14 @@ async function handleMessageSend(params: any): Promise<any> {
     messageId: `msg-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
     contextId: message?.messageId || `ctx-${Date.now()}`,
     kind: 'message',
-    role: 'assistant',
+    role: 'agent',  // Must be 'agent' not 'assistant' per A2A spec
     parts: [
       {
-        kind: 'data',
-        data: {
+        kind: 'text',
+        text: JSON.stringify({
           status: taskStatus,
           result: skillResult,
-        },
+        }, null, 2),
       },
     ],
     metadata: {},
