@@ -14,11 +14,13 @@
     "declaration": false,
     "declarationMap": false,
     "sourceMap": false,
-    "incremental": false,
+    "incremental": true,
+    "tsBuildInfoFile": "./dist/.tsbuildinfo",
     "experimentalDecorators": true,
     "emitDecoratorMetadata": true,
     "types": ["node"],
-    "noImplicitAny": false
+    "noImplicitAny": false,
+    "isolatedModules": true
   },
   "include": ["src/**/*.ts"],
   "exclude": ["node_modules", "dist"]

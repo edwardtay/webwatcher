@@ -1,5 +1,5 @@
-# Multi-stage build for smaller image
-FROM node:20-slim AS builder
+# Use Node.js 20 LTS
+FROM node:20-slim
 
 WORKDIR /app
 
@@ -7,28 +7,11 @@ WORKDIR /app
 COPY package*.json ./
 COPY tsconfig.json ./
 
-# Install all dependencies (including dev for build)
+# Install dependencies (including tsx for runtime)
 RUN npm ci
 
 # Copy source code
 COPY . .
-
-# Build TypeScript
-RUN npm run build
-
-# Production stage
-FROM node:20-slim
-
-WORKDIR /app
-
-# Copy package files
-COPY package*.json ./
-
-# Install only production dependencies
-RUN npm ci --only=production
-
-# Copy built files from builder
-COPY --from=builder /app/dist ./dist
 
 # Expose port
 EXPOSE 8080
@@ -37,6 +20,6 @@ EXPOSE 8080
 ENV NODE_ENV=production
 ENV PORT=8080
 
-# Start server
-CMD ["node", "dist/server.js"]
+# Start server with tsx (no build needed, saves memory)
+CMD ["npx", "tsx", "src/server.ts"]
 

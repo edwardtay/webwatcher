@@ -9,7 +9,7 @@
     "start": "NODE_OPTIONS='--no-warnings' node dist/server.js",
     "start:prod": "NODE_OPTIONS='--no-warnings' tsx ./src/server.ts",
     "dev:server": "nodemon --exec tsx ./src/server.ts",
-    "build": "tsc",
+    "build": "NODE_OPTIONS='--max-old-space-size=4096' tsc",
     "build:fast": "echo 'Using tsx runtime - no build needed'",
     "vercel-build": "npm run build",
     "lint": "eslint -c .eslintrc.json src/**/*.ts",
