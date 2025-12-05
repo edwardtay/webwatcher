@@ -85,7 +85,7 @@ router.get('/.well-known/agent.json', (_req, res) => {
     // Core A2A v0.2.6 required fields
     name: 'WebWatcher Cybersecurity Intelligence Platform',
     description: 'Advanced cybersecurity agent providing real-time threat analysis, breach detection, URL/domain scanning, email security analysis, and comprehensive security intelligence through AI-powered multi-agent coordination.',
-    url: serverConfig.agentBaseUrl,
+    url: `${serverConfig.agentBaseUrl}/a2a`,
     
     // A2A v0.2.6 recommended fields
     version: '2.0.0',
@@ -104,19 +104,8 @@ router.get('/.well-known/agent.json', (_req, res) => {
     defaultInputModes: ['application/json'],
     defaultOutputModes: ['application/json'],
     
-    // A2A v0.2.6 security schemes
-    securitySchemes: {
-      none: {
-        type: 'none',
-        description: 'No authentication required for public endpoints',
-      },
-    },
-    security: ['none'],
-    
-    // A2A v0.2.6 capabilities structure
-    capabilities: {
-      // Skills the agent can perform (A2A v0.2.6 uses 'skills' not 'tools')
-      skills: [
+    // A2A v0.2.6 skills (top-level field)
+    skills: [
         {
           name: 'scanUrl',
           description: 'Comprehensive URL security scan including phishing detection, malware scanning, redirect chain analysis, TLS/SSL validation, and multi-source reputation checking.',
@@ -208,6 +197,9 @@ router.get('/.well-known/agent.json', (_req, res) => {
           },
         },
       ],
+    
+    // A2A v0.2.6 capabilities structure
+    capabilities: {
       // A2A protocol specific capabilities
       protocols: {
         a2a: {
