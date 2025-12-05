@@ -205,52 +205,48 @@ async function handleMessageSend(params: any): Promise<any> {
 
 // Extract parameters from text content
 function extractParametersFromText(params: any): void {
-  if (!params._textContent) return;
+  if (!params._textContent) {
+    logger.warn('No _textContent to extract from');
+    return;
+  }
   
   const text = params._textContent.trim();
-  const textLower = text.toLowerCase();
+  logger.info('Extracting parameters from text:', { text, length: text.length });
+  
+  // Already have explicit parameters, skip extraction
+  if (params.url || params.email || params.domain) {
+    logger.info('Already have explicit parameters, skipping extraction');
+    return;
+  }
   
   // Try to extract URL from text (with http/https)
-  if (!params.url) {
-    const urlMatch = text.match(/https?:\/\/[^\s]+/);
-    if (urlMatch) {
-      params.url = urlMatch[0];
-      logger.info('Extracted URL from text:', params.url);
-      return; // Found URL, done
-    }
+  const urlMatch = text.match(/https?:\/\/[^\s]+/);
+  if (urlMatch) {
+    params.url = urlMatch[0];
+    logger.info('Extracted URL with protocol:', params.url);
+    return;
   }
   
   // Try to extract email from text
-  if (!params.email) {
-    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-    if (emailMatch) {
-      params.email = emailMatch[0];
-      logger.info('Extracted email from text:', params.email);
-      return; // Found email, done
-    }
+  const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    params.email = emailMatch[0];
+    logger.info('Extracted email:', params.email);
+    return;
   }
   
-  // Fallback: If text looks like a URL/domain but didn't match patterns above
-  // This handles cases like "example.com" without http:// or plain text URLs
-  // Prefer treating as URL (for scanning) rather than domain (for WHOIS)
-  if (!params.url && !params.email && !params.domain) {
-    // Check if it's a simple domain-like string
-    if (text.includes('.') && !text.includes(' ') && text.length < 200) {
-      // Check if it looks like a domain
-      const domainMatch = text.match(/^([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}$/i);
-      if (domainMatch) {
-        // Plain domain - treat as URL for scanning (more useful than WHOIS)
-        params.url = 'https://' + text;
-        logger.info('Fallback: treating plain domain as URL for scanning:', params.url);
-      } else if (!text.startsWith('http://') && !text.startsWith('https://')) {
-        params.url = 'https://' + text;
-        logger.info('Fallback: treating text as URL with https://', params.url);
-      } else {
-        params.url = text;
-        logger.info('Fallback: treating text as URL', params.url);
-      }
-    }
+  // Fallback: treat text as URL if it looks domain-like
+  // This is the most common case for the inspector
+  if (text.includes('.') && text.length < 200) {
+    // Add https:// if not present
+    params.url = text.startsWith('http://') || text.startsWith('https://') 
+      ? text 
+      : 'https://' + text;
+    logger.info('Fallback: treating text as URL:', params.url);
+    return;
   }
+  
+  logger.warn('Could not extract any parameters from text:', text);
 }
 
 // Auto-route to appropriate skill based on parameters
