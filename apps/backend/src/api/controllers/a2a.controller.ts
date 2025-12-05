@@ -246,6 +246,20 @@ function extractParametersFromText(params: any): void {
     return;
   }
   
+  // Final fallback: if text doesn't look like anything specific,
+  // try to use it as a URL anyway (will fail gracefully if invalid)
+  if (text.length > 0 && text.length < 200) {
+    // Check if it might be a domain without TLD (like "localhost" or "google")
+    // or just random text - try adding .com and https://
+    if (!text.includes(' ') && !text.includes('@')) {
+      params.url = text.startsWith('http://') || text.startsWith('https://') 
+        ? text 
+        : 'https://' + text + '.com';
+      logger.info('Final fallback: treating text as potential domain:', params.url);
+      return;
+    }
+  }
+  
   logger.warn('Could not extract any parameters from text:', text);
 }
 
