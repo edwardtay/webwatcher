@@ -10,7 +10,7 @@ const Config = {
   
   ENDPOINTS: {
     CHAT: '/api/chat',
-    HEALTH: '/health',
+    HEALTH: '/',  // Use root endpoint for health check
     SECURITY: '/api/security',
   },
   
