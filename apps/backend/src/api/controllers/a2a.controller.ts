@@ -124,7 +124,16 @@ async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<
 // A2A message/send handler - wraps skill execution
 // Implements A2A v0.2.6 spec: accepts standard MessageSendParams
 async function handleMessageSend(params: any): Promise<any> {
-  const { message, metadata } = params;
+  const { message, metadata, configuration } = params;
+  
+  // Log incoming request for debugging
+  logger.info('message/send params:', {
+    hasMessage: !!message,
+    hasMetadata: !!metadata,
+    hasConfiguration: !!configuration,
+    messageKeys: message ? Object.keys(message) : [],
+    metadataKeys: metadata ? Object.keys(metadata) : [],
+  });
   
   // Extract skill from metadata (optional, per A2A spec)
   let skill = metadata?.skillId || metadata?.skill;
@@ -141,11 +150,22 @@ async function handleMessageSend(params: any): Promise<any> {
       }
     }
   }
+  
+  // Also check if message itself has content (some tools send it differently)
+  if (message?.content) {
+    if (typeof message.content === 'string') {
+      skillParams._textContent = message.content;
+    } else if (typeof message.content === 'object') {
+      skillParams = { ...skillParams, ...message.content };
+    }
+  }
 
   // Auto-route if no explicit skill provided
   if (!skill) {
     skill = autoRouteSkill(skillParams);
   }
+  
+  logger.info('Routing to skill:', { skill, extractedParams: Object.keys(skillParams) });
 
   // Execute the skill
   let skillResult: any;
@@ -195,8 +215,34 @@ function autoRouteSkill(params: any): string {
     return 'analyzeEmail';
   }
   
-  // Fallback: try to infer from text content
+  // Fallback: try to infer from text content and extract parameters
   const textContent = params._textContent?.toLowerCase() || '';
+  
+  // Try to extract URL from text
+  const urlMatch = params._textContent?.match(/https?:\/\/[^\s]+/);
+  if (urlMatch) {
+    params.url = urlMatch[0];
+    return 'scanUrl';
+  }
+  
+  // Try to extract email from text
+  const emailMatch = params._textContent?.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+  if (emailMatch) {
+    params.email = emailMatch[0];
+    if (textContent.includes('breach') || textContent.includes('pwned') || textContent.includes('leak')) {
+      return 'breachCheck';
+    }
+    return 'analyzeEmail';
+  }
+  
+  // Try to extract domain from text
+  const domainMatch = params._textContent?.match(/\b([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\b/i);
+  if (domainMatch) {
+    params.domain = domainMatch[0];
+    return 'checkDomain';
+  }
+  
+  // Keyword-based routing
   if (textContent.includes('url') || textContent.includes('http')) return 'scanUrl';
   if (textContent.includes('domain')) return 'checkDomain';
   if (textContent.includes('email')) return 'analyzeEmail';
@@ -209,7 +255,11 @@ function autoRouteSkill(params: any): string {
 // Tool handlers
 async function handleScanUrl(parameters: any): Promise<any> {
   if (!parameters?.url) {
-    throw new Error('Missing required parameter: url');
+    logger.error('scanUrl missing url parameter:', { 
+      receivedParams: parameters,
+      paramKeys: Object.keys(parameters || {}),
+    });
+    throw new Error(`Missing required parameter: url. Received parameters: ${JSON.stringify(Object.keys(parameters || {}))}`);
   }
 
   // Validate URL format and prevent SSRF
