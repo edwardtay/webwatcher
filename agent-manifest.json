@@ -20,20 +20,24 @@
   ],
   "endpoints": {
     "base": "https://webwatcher.lever-labs.com",
-    "health": "/health",
+    "health": "/healthz",
     "chat": "/api/chat",
     "security": "/api/security",
-    "a2a": "/api/a2a"
+    "a2a": "/api/a2a",
+    "agentCard": "/.well-known/agent.json"
   },
   "a2a": {
+    "version": "0.2.6",
+    "endpoint": "/api/a2a",
+    "agentCard": "/.well-known/agent.json",
     "protocol": "http",
     "format": "json",
-    "version": "1.0",
+    "messageTypes": ["request", "response", "error", "notification"],
     "tools": [
       {
-        "name": "scan_url",
+        "name": "scanUrl",
         "description": "Comprehensive URL security scan using A2A protocol. Checks for phishing, malware, suspicious patterns, and threat intelligence.",
-        "input": {
+        "inputSchema": {
           "type": "object",
           "properties": {
             "url": {
@@ -43,19 +47,20 @@
           },
           "required": ["url"]
         },
-        "output": {
+        "outputSchema": {
           "type": "object",
           "properties": {
-            "riskScore": { "type": "number", "min": 0, "max": 100 },
+            "riskScore": { "type": "number", "minimum": 0, "maximum": 100 },
             "verdict": { "type": "string", "enum": ["safe", "suspicious", "malicious"] },
+            "threats": { "type": "array", "items": { "type": "string" } },
             "details": { "type": "object" }
           }
         }
       },
       {
-        "name": "check_domain",
+        "name": "checkDomain",
         "description": "Domain reputation, WHOIS data, and threat intelligence using A2A protocol",
-        "input": {
+        "inputSchema": {
           "type": "object",
           "properties": {
             "domain": {
@@ -65,7 +70,7 @@
           },
           "required": ["domain"]
         },
-        "output": {
+        "outputSchema": {
           "type": "object",
           "properties": {
             "riskScore": { "type": "number" },
@@ -76,19 +81,19 @@
         }
       },
       {
-        "name": "analyze_email",
+        "name": "analyzeEmail",
         "description": "Email phishing and threat analysis using A2A protocol",
-        "input": {
+        "inputSchema": {
           "type": "object",
           "properties": {
-            "emailData": {
+            "email": {
               "type": "string",
               "description": "Email content, headers, or sender information"
             }
           },
-          "required": ["emailData"]
+          "required": ["email"]
         },
-        "output": {
+        "outputSchema": {
           "type": "object",
           "properties": {
             "phishingScore": { "type": "number" },
@@ -98,9 +103,9 @@
         }
       },
       {
-        "name": "breach_check",
+        "name": "breachCheck",
         "description": "Data breach and credential leak detection using HaveIBeenPwned and A2A protocol",
-        "input": {
+        "inputSchema": {
           "type": "object",
           "properties": {
             "email": {
@@ -110,7 +115,7 @@
           },
           "required": ["email"]
         },
-        "output": {
+        "outputSchema": {
           "type": "object",
           "properties": {
             "totalBreaches": { "type": "number" },
@@ -129,12 +134,14 @@
   "protocols": {
     "a2a": {
       "enabled": true,
-      "version": "1.0",
-      "coordination": "automatic"
+      "version": "0.2.6",
+      "coordination": "automatic",
+      "endpoint": "/api/a2a",
+      "agentCard": "/.well-known/agent.json"
     },
     "mcp": {
       "enabled": true,
-      "version": "1.0"
+      "version": "2024-11-05"
     },
     "http": {
       "enabled": true,
