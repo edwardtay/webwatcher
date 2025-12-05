@@ -24,7 +24,6 @@ router.get('/a2a', (_req, res) => {
         jsonrpc: '2.0',
         method: 'message/send',
         params: {
-          skill: 'scanUrl',
           message: {
             role: 'user',
             parts: [
@@ -34,9 +33,13 @@ router.get('/a2a', (_req, res) => {
               },
             ],
           },
+          metadata: {
+            skillId: 'scanUrl',
+          },
         },
         id: '1',
       },
+      note: 'The skillId in metadata is optional. If omitted, the agent will auto-route based on message content.',
       response: {
         jsonrpc: '2.0',
         result: {
@@ -76,9 +79,12 @@ router.get('/a2a', (_req, res) => {
       },
     ],
     usage: {
-      curl: `curl -X POST https://webwatcher.lever-labs.com/a2a \\
+      withSkillId: `curl -X POST https://webwatcher.lever-labs.com/a2a \\
   -H "Content-Type: application/json" \\
-  -d '{"jsonrpc":"2.0","method":"message/send","params":{"skill":"scanUrl","message":{"role":"user","parts":[{"kind":"data","data":{"url":"https://example.com"}}]}},"id":"1"}'`,
+  -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"role":"user","parts":[{"kind":"data","data":{"url":"https://example.com"}}]},"metadata":{"skillId":"scanUrl"}},"id":"1"}'`,
+      autoRoute: `curl -X POST https://webwatcher.lever-labs.com/a2a \\
+  -H "Content-Type: application/json" \\
+  -d '{"jsonrpc":"2.0","method":"message/send","params":{"message":{"role":"user","parts":[{"kind":"data","data":{"url":"https://example.com"}}]}},"id":"1"}'`,
     },
   });
 });

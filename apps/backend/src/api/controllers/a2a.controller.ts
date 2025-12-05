@@ -122,12 +122,12 @@ async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<
 }
 
 // A2A message/send handler - wraps skill execution
+// Implements A2A v0.2.6 spec: accepts standard MessageSendParams
 async function handleMessageSend(params: any): Promise<any> {
-  if (!params?.skill) {
-    throw new Error('Missing required parameter: skill');
-  }
-
-  const { skill, message } = params;
+  const { message, metadata } = params;
+  
+  // Extract skill from metadata (optional, per A2A spec)
+  let skill = metadata?.skillId || metadata?.skill;
   
   // Extract data from message parts
   let skillParams: any = {};
@@ -135,8 +135,16 @@ async function handleMessageSend(params: any): Promise<any> {
     for (const part of message.parts) {
       if (part.kind === 'data' && part.data) {
         skillParams = { ...skillParams, ...part.data };
+      } else if (part.kind === 'text' && part.text) {
+        // Store text content for auto-routing
+        skillParams._textContent = part.text;
       }
     }
+  }
+
+  // Auto-route if no explicit skill provided
+  if (!skill) {
+    skill = autoRouteSkill(skillParams);
   }
 
   // Execute the skill
@@ -170,6 +178,32 @@ async function handleMessageSend(params: any): Promise<any> {
       result: skillResult,
     },
   };
+}
+
+// Auto-route to appropriate skill based on parameters
+function autoRouteSkill(params: any): string {
+  // Check for explicit parameters first
+  if (params.url) return 'scanUrl';
+  if (params.domain) return 'checkDomain';
+  if (params.email) {
+    // Distinguish between email analysis and breach check
+    // If text mentions "breach" or "pwned", use breachCheck
+    const textContent = params._textContent?.toLowerCase() || '';
+    if (textContent.includes('breach') || textContent.includes('pwned') || textContent.includes('leak')) {
+      return 'breachCheck';
+    }
+    return 'analyzeEmail';
+  }
+  
+  // Fallback: try to infer from text content
+  const textContent = params._textContent?.toLowerCase() || '';
+  if (textContent.includes('url') || textContent.includes('http')) return 'scanUrl';
+  if (textContent.includes('domain')) return 'checkDomain';
+  if (textContent.includes('email')) return 'analyzeEmail';
+  if (textContent.includes('breach')) return 'breachCheck';
+  
+  // Default to scanUrl as it's the most common use case
+  return 'scanUrl';
 }
 
 // Tool handlers

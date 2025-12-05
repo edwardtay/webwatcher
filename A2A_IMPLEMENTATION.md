@@ -46,67 +46,74 @@ router.use('/api', a2aRoutes);
 
 ## A2A Protocol Structure
 
-### Request Format
+### Request Format (JSON-RPC 2.0)
 ```json
 {
-  "id": "unique-request-id",
-  "type": "request",
-  "from": {
-    "agentId": "requesting-agent-id",
-    "url": "https://requesting-agent.com"
+  "jsonrpc": "2.0",
+  "method": "message/send",
+  "params": {
+    "message": {
+      "role": "user",
+      "parts": [
+        {
+          "kind": "data",
+          "data": {
+            "url": "https://example.com"
+          }
+        }
+      ]
+    },
+    "metadata": {
+      "skillId": "scanUrl"
+    }
   },
-  "to": {
-    "agentId": "webwatcher-cybersecurity-agent",
-    "url": "https://webwatcher.lever-labs.com"
-  },
-  "tool": "scanUrl",
-  "parameters": {
-    "url": "https://example.com"
-  },
-  "timestamp": "2024-12-05T10:30:00Z"
+  "id": "unique-request-id"
 }
 ```
 
-### Response Format
+**Note:** The `skillId` in metadata is optional per A2A v0.2.6 spec. If omitted, WebWatcher will auto-route based on message content.
+
+### Response Format (JSON-RPC 2.0)
 ```json
 {
-  "id": "unique-request-id",
-  "type": "response",
-  "from": {
-    "agentId": "webwatcher-cybersecurity-agent",
-    "url": "https://webwatcher.lever-labs.com"
-  },
-  "to": {
-    "agentId": "requesting-agent-id",
-    "url": "https://requesting-agent.com"
-  },
+  "jsonrpc": "2.0",
   "result": {
-    "riskScore": 15,
-    "verdict": "safe",
-    "threats": [],
-    "details": {}
+    "task": {
+      "id": "task-1733486400000",
+      "status": "completed",
+      "result": {
+        "riskScore": 15,
+        "verdict": "safe",
+        "threats": [],
+        "details": {}
+      }
+    }
   },
-  "timestamp": "2024-12-05T10:30:05Z"
+  "id": "unique-request-id"
 }
 ```
 
-### Error Format
+### Error Format (JSON-RPC 2.0)
 ```json
 {
-  "id": "unique-request-id",
-  "type": "error",
-  "from": {
-    "agentId": "webwatcher-cybersecurity-agent",
-    "url": "https://webwatcher.lever-labs.com"
-  },
+  "jsonrpc": "2.0",
   "error": {
-    "code": "TOOL_NOT_FOUND",
-    "message": "Tool 'unknownTool' is not available",
-    "details": {}
+    "code": -32601,
+    "message": "Method not found: 'unknownMethod'",
+    "data": {
+      "method": "unknownMethod"
+    }
   },
-  "timestamp": "2024-12-05T10:30:05Z"
+  "id": "unique-request-id"
 }
 ```
+
+**Standard JSON-RPC 2.0 Error Codes:**
+- `-32700`: Parse error
+- `-32600`: Invalid Request
+- `-32601`: Method not found
+- `-32602`: Invalid params
+- `-32603`: Internal error
 
 ## Available Tools
 
@@ -195,15 +202,35 @@ Data breach detection using HaveIBeenPwned API.
 # Test agent card discovery
 curl https://webwatcher.lever-labs.com/.well-known/agent.json
 
-# Test A2A scanUrl
-curl -X POST https://webwatcher.lever-labs.com/api/a2a \
+# Test A2A scanUrl with explicit skillId
+curl -X POST https://webwatcher.lever-labs.com/a2a \
   -H "Content-Type: application/json" \
   -d '{
-    "id": "test-001",
-    "type": "request",
-    "from": {"agentId": "test-agent"},
-    "tool": "scanUrl",
-    "parameters": {"url": "https://google.com"}
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [{"kind": "data", "data": {"url": "https://google.com"}}]
+      },
+      "metadata": {"skillId": "scanUrl"}
+    },
+    "id": "test-001"
+  }'
+
+# Test A2A with auto-routing (no skillId)
+curl -X POST https://webwatcher.lever-labs.com/a2a \
+  -H "Content-Type: application/json" \
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "message/send",
+    "params": {
+      "message": {
+        "role": "user",
+        "parts": [{"kind": "data", "data": {"url": "https://google.com"}}]
+      }
+    },
+    "id": "test-002"
   }'
 ```
 
@@ -217,7 +244,8 @@ curl -X POST https://webwatcher.lever-labs.com/api/a2a \
 | Endpoint | Method | Description |
 |----------|--------|-------------|
 | `/.well-known/agent.json` | GET | Agent card discovery (A2A v0.2.6) |
-| `/api/a2a` | POST | A2A protocol endpoint for tool execution |
+| `/a2a` | POST | A2A protocol endpoint (JSON-RPC 2.0) |
+| `/a2a` | GET | A2A endpoint documentation |
 | `/healthz` | GET | Health check |
 | `/api/chat` | POST | Natural language chat interface |
 
