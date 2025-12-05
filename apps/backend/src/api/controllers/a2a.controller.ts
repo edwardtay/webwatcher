@@ -156,13 +156,25 @@ async function handleScanUrl(parameters: any): Promise<any> {
   
   const verdict = riskScore >= 50 ? 'malicious' : riskScore >= 25 ? 'suspicious' : 'safe';
   
+  // Clean response - exclude large HTML content
   return {
     riskScore,
     verdict,
     threats,
     details: {
-      scan: scanResult,
-      reputation: reputationResult,
+      pageAnalysis: {
+        forms: scanResult.dom.forms,
+        scripts: scanResult.dom.scripts,
+        iframes: scanResult.dom.iframes,
+        externalLinks: scanResult.dom.externalLinks,
+        flags: scanResult.flags,
+      },
+      reputation: {
+        domain: reputationResult.domain,
+        ip: reputationResult.ip,
+        sources: reputationResult.sources,
+        flags: reputationResult.flags,
+      },
     },
   };
 }
