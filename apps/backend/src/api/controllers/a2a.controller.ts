@@ -160,6 +160,9 @@ async function handleMessageSend(params: any): Promise<any> {
     }
   }
 
+  // Extract parameters from text content if needed
+  extractParametersFromText(skillParams);
+  
   // Auto-route if no explicit skill provided
   if (!skill) {
     skill = autoRouteSkill(skillParams);
@@ -200,6 +203,41 @@ async function handleMessageSend(params: any): Promise<any> {
   };
 }
 
+// Extract parameters from text content
+function extractParametersFromText(params: any): void {
+  if (!params._textContent) return;
+  
+  const text = params._textContent;
+  const textLower = text.toLowerCase();
+  
+  // Try to extract URL from text
+  if (!params.url) {
+    const urlMatch = text.match(/https?:\/\/[^\s]+/);
+    if (urlMatch) {
+      params.url = urlMatch[0];
+      logger.info('Extracted URL from text:', params.url);
+    }
+  }
+  
+  // Try to extract email from text
+  if (!params.email) {
+    const emailMatch = text.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    if (emailMatch) {
+      params.email = emailMatch[0];
+      logger.info('Extracted email from text:', params.email);
+    }
+  }
+  
+  // Try to extract domain from text (only if no URL or email found)
+  if (!params.domain && !params.url && !params.email) {
+    const domainMatch = text.match(/\b([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\b/i);
+    if (domainMatch) {
+      params.domain = domainMatch[0];
+      logger.info('Extracted domain from text:', params.domain);
+    }
+  }
+}
+
 // Auto-route to appropriate skill based on parameters
 function autoRouteSkill(params: any): string {
   // Check for explicit parameters first
@@ -215,34 +253,8 @@ function autoRouteSkill(params: any): string {
     return 'analyzeEmail';
   }
   
-  // Fallback: try to infer from text content and extract parameters
+  // Keyword-based routing as fallback
   const textContent = params._textContent?.toLowerCase() || '';
-  
-  // Try to extract URL from text
-  const urlMatch = params._textContent?.match(/https?:\/\/[^\s]+/);
-  if (urlMatch) {
-    params.url = urlMatch[0];
-    return 'scanUrl';
-  }
-  
-  // Try to extract email from text
-  const emailMatch = params._textContent?.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
-  if (emailMatch) {
-    params.email = emailMatch[0];
-    if (textContent.includes('breach') || textContent.includes('pwned') || textContent.includes('leak')) {
-      return 'breachCheck';
-    }
-    return 'analyzeEmail';
-  }
-  
-  // Try to extract domain from text
-  const domainMatch = params._textContent?.match(/\b([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\b/i);
-  if (domainMatch) {
-    params.domain = domainMatch[0];
-    return 'checkDomain';
-  }
-  
-  // Keyword-based routing
   if (textContent.includes('url') || textContent.includes('http')) return 'scanUrl';
   if (textContent.includes('domain')) return 'checkDomain';
   if (textContent.includes('email')) return 'analyzeEmail';
