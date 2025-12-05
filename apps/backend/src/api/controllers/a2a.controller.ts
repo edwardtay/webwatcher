@@ -207,15 +207,16 @@ async function handleMessageSend(params: any): Promise<any> {
 function extractParametersFromText(params: any): void {
   if (!params._textContent) return;
   
-  const text = params._textContent;
+  const text = params._textContent.trim();
   const textLower = text.toLowerCase();
   
-  // Try to extract URL from text
+  // Try to extract URL from text (with http/https)
   if (!params.url) {
     const urlMatch = text.match(/https?:\/\/[^\s]+/);
     if (urlMatch) {
       params.url = urlMatch[0];
       logger.info('Extracted URL from text:', params.url);
+      return; // Found URL, done
     }
   }
   
@@ -225,15 +226,33 @@ function extractParametersFromText(params: any): void {
     if (emailMatch) {
       params.email = emailMatch[0];
       logger.info('Extracted email from text:', params.email);
+      return; // Found email, done
     }
   }
   
-  // Try to extract domain from text (only if no URL or email found)
+  // Try to extract domain from text
   if (!params.domain && !params.url && !params.email) {
     const domainMatch = text.match(/\b([a-z0-9]+(-[a-z0-9]+)*\.)+[a-z]{2,}\b/i);
     if (domainMatch) {
       params.domain = domainMatch[0];
       logger.info('Extracted domain from text:', params.domain);
+      return; // Found domain, done
+    }
+  }
+  
+  // Fallback: If text looks like a URL/domain but didn't match patterns above
+  // This handles cases like "example.com" without http:// or plain text URLs
+  if (!params.url && !params.email && !params.domain) {
+    // Check if it's a simple domain-like string
+    if (text.includes('.') && !text.includes(' ') && text.length < 200) {
+      // Assume it's a URL and add protocol if missing
+      if (!text.startsWith('http://') && !text.startsWith('https://')) {
+        params.url = 'https://' + text;
+        logger.info('Fallback: treating text as URL with https://', params.url);
+      } else {
+        params.url = text;
+        logger.info('Fallback: treating text as URL', params.url);
+      }
     }
   }
 }
