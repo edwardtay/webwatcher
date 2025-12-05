@@ -45,7 +45,7 @@ gcloud services enable containerregistry.googleapis.com --quiet || true
 
 # Get region (default to us-central1)
 REGION=${REGION:-us-central1}
-SERVICE_NAME=${SERVICE_NAME:-verisense-agentkit}
+SERVICE_NAME=${SERVICE_NAME:-webwatcher}
 
 echo -e "\n${GREEN}🏗️  Building and deploying to Cloud Run...${NC}"
 echo -e "${YELLOW}Service: ${SERVICE_NAME}${NC}"

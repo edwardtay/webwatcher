@@ -22,7 +22,7 @@ if [ -z "$ENV_VARS" ]; then
 fi
 
 echo "Setting environment variables..."
-gcloud run services update verisense-agentkit \
+gcloud run services update webwatcher \
   --region us-central1 \
   --project webwatcher-479404 \
   --set-env-vars "$ENV_VARS"
@@ -31,4 +31,4 @@ echo ""
 echo "✅ Environment variables updated!"
 echo ""
 echo "To verify, run:"
-echo "gcloud run services describe verisense-agentkit --region us-central1 --project webwatcher-479404 --format='value(spec.template.spec.containers[0].env)'"
+echo "gcloud run services describe webwatcher --region us-central1 --project webwatcher-479404 --format='value(spec.template.spec.containers[0].env)'"

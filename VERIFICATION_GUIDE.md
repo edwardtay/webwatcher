@@ -473,7 +473,7 @@ chmod +x verify-agent.sh
 curl https://webwatcher.lever-labs.com/healthz
 
 # Check deployment
-gcloud run services describe verisense-agentkit --region us-central1
+gcloud run services describe webwatcher --region us-central1 --project webwatcher-479404
 ```
 
 ### A2A Endpoint Returns 404
@@ -485,7 +485,7 @@ curl -I https://webwatcher.lever-labs.com/api/a2a
 ### Tool Execution Fails
 ```bash
 # Check logs
-gcloud run logs read verisense-agentkit --project webwatcher-479404 --limit 50
+gcloud run logs read webwatcher --project webwatcher-479404 --limit 50
 ```
 
 ## References

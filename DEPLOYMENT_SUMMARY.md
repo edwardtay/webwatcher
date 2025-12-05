@@ -150,7 +150,7 @@ npm start
 ## 📞 Support
 
 For issues:
-- Check logs: `gcloud run logs read verisense-agentkit --project webwatcher-479404`
+- Check logs: `gcloud run logs read webwatcher --project webwatcher-479404`
 - Review documentation in repository
 - Contact: support@lever-labs.com
 

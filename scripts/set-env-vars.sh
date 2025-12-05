@@ -11,7 +11,7 @@ YELLOW='\033[1;33m'
 NC='\033[0m'
 
 # Configuration
-SERVICE_NAME=${SERVICE_NAME:-verisense-agentkit}
+SERVICE_NAME=${SERVICE_NAME:-webwatcher}
 REGION=${REGION:-us-central1}
 
 echo -e "${GREEN}🔧 Setting environment variables for ${SERVICE_NAME}${NC}\n"

@@ -27,7 +27,7 @@ The following files have been updated to implement A2A v0.2.6 protocol complianc
 This will:
 - Build the Docker container
 - Deploy to Google Cloud Run
-- Update the service at: https://verisense-agentkit-414780218994.us-central1.run.app
+- Update the service at: https://webwatcher.lever-labs.com
 
 ### Option 2: Local Testing
 
@@ -149,6 +149,6 @@ AGENT_BASE_URL=https://webwatcher.lever-labs.com
 ## Support
 
 For issues or questions:
-- Check logs: `gcloud run logs read verisense-agentkit --project webwatcher-479404`
+- Check logs: `gcloud run logs read webwatcher --project webwatcher-479404`
 - Review A2A specification: https://a2a-protocol.org/v0.2.6/specification/
 - See implementation details: `A2A_IMPLEMENTATION.md`

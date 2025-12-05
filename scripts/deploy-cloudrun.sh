@@ -4,13 +4,13 @@
 # This script deploys from the root directory (where the code actually is)
 
 echo "🚀 Deploying WebWatcher to Cloud Run..."
-echo "📍 Service: verisense-agentkit"
+echo "📍 Service: webwatcher"
 echo "🌍 Region: us-central1"
 echo "📦 Project: webwatcher-479404"
 echo ""
 
 # Deploy from current directory (root)
-gcloud run deploy verisense-agentkit \
+gcloud run deploy webwatcher \
   --source . \
   --region us-central1 \
   --project webwatcher-479404 \
@@ -24,4 +24,4 @@ gcloud run deploy verisense-agentkit \
 
 echo ""
 echo "✅ Deployment complete!"
-echo "🔗 URL: https://verisense-agentkit-414780218994.us-central1.run.app"
+echo "🔗 Service URL will be displayed above"

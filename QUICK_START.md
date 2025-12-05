@@ -80,7 +80,7 @@ curl https://webwatcher.lever-labs.com/healthz
 ### Deployment fails
 ```bash
 # Check Cloud Run logs
-gcloud run logs read verisense-agentkit --project webwatcher-479404 --limit 50
+gcloud run logs read webwatcher --project webwatcher-479404 --limit 50
 ```
 
 ### Tests fail
