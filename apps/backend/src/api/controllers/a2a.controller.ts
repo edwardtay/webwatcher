@@ -211,6 +211,16 @@ async function handleMessageSend(params: any): Promise<any> {
       acceptedInputs: getAcceptedInputsForSkill(skill),
     };
   }
+  
+  // Add AI analysis if available
+  if (taskStatus === 'completed' && skillResult) {
+    try {
+      const aiAnalysis = await generateAIAnalysis(skill, skillParams, skillResult);
+      skillResult.aiAnalysis = aiAnalysis;
+    } catch (error) {
+      logger.warn('AI analysis failed, continuing without it:', error);
+    }
+  }
 
   // Return in A2A v0.2.6 format - Direct message response
   // This is the simplest format: just return a Message object
@@ -337,6 +347,16 @@ async function handleMessageStream(a2aRequest: A2ARequest, res: Response): Promi
         suggestion: getSuggestionForInput(skillParams._textContent),
         acceptedInputs: getAcceptedInputsForSkill(skill),
       };
+    }
+    
+    // Add AI analysis if available
+    if (taskStatus === 'completed' && skillResult) {
+      try {
+        const aiAnalysis = await generateAIAnalysis(skill, skillParams, skillResult);
+        skillResult.aiAnalysis = aiAnalysis;
+      } catch (error) {
+        logger.warn('AI analysis failed, continuing without it:', error);
+      }
     }
     
     // 4. Send result message
@@ -743,4 +763,48 @@ function getAcceptedInputsForSkill(skill: string): any {
     examples: [],
     format: 'Please check the skill documentation',
   };
+}
+
+// Generate AI analysis of scan results using OpenAI
+async function generateAIAnalysis(skill: string, params: any, result: any): Promise<string> {
+  try {
+    const { ChatOpenAI } = await import('@langchain/openai');
+    
+    if (!process.env.OPENAI_API_KEY) {
+      return 'AI analysis unavailable (API key not configured)';
+    }
+    
+    const llm = new ChatOpenAI({
+      model: 'gpt-4o-mini',
+      temperature: 0.3,
+    });
+    
+    const target = params.url || params.domain || params.email || 'unknown';
+    const verdict = result.verdict || (result.riskScore >= 50 ? 'high risk' : result.riskScore >= 25 ? 'medium risk' : 'low risk');
+    const threats = result.threats || [];
+    
+    const prompt = `You are a cybersecurity expert analyzing scan results. Provide a brief, professional analysis.
+
+Skill: ${skill}
+Target: ${target}
+Verdict: ${verdict}
+Risk Score: ${result.riskScore || 0}/100
+Threats Found: ${threats.length > 0 ? threats.join(', ') : 'None'}
+
+Scan Details:
+${JSON.stringify(result.details || {}, null, 2)}
+
+Provide a 2-3 sentence professional analysis explaining:
+1. What the scan found
+2. The level of risk
+3. Recommended action (if any)
+
+Keep it concise and actionable.`;
+    
+    const response = await llm.invoke(prompt);
+    return response.content.toString();
+  } catch (error) {
+    logger.error('AI analysis generation failed:', error);
+    return 'AI analysis unavailable';
+  }
 }
