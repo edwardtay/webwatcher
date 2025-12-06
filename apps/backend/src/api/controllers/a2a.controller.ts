@@ -76,9 +76,13 @@ async function handleMethodCall(a2aRequest: A2ARequest, res: Response): Promise<
   try {
     let result: any;
 
-    // A2A protocol uses message/send as the wrapper method
+    // A2A protocol methods
     if (method === 'message/send') {
       result = await handleMessageSend(params);
+    } else if (method === 'message/stream') {
+      // Handle streaming separately - it uses SSE
+      await handleMessageStream(a2aRequest, res);
+      return; // Don't send JSON response for streaming
     } else {
       // Direct skill calls (for backward compatibility)
       switch (method) {
@@ -226,6 +230,169 @@ async function handleMessageSend(params: any): Promise<any> {
     ],
     metadata: {},
   };
+}
+
+// A2A message/stream handler - Server-Sent Events streaming
+async function handleMessageStream(a2aRequest: A2ARequest, res: Response): Promise<void> {
+  const { params, id } = a2aRequest;
+  const { message, metadata } = params || {};
+  
+  // Set up SSE headers
+  res.setHeader('Content-Type', 'text/event-stream');
+  res.setHeader('Cache-Control', 'no-cache');
+  res.setHeader('Connection', 'keep-alive');
+  res.setHeader('X-Accel-Buffering', 'no'); // Disable nginx buffering
+  
+  const taskId = `task-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+  const contextId = message?.messageId || `ctx-${Date.now()}`;
+  
+  // Helper to send SSE data
+  const sendEvent = (data: any) => {
+    res.write(`data: ${JSON.stringify(data)}\n\n`);
+  };
+  
+  try {
+    // 1. Send task submitted event
+    sendEvent({
+      id,
+      jsonrpc: '2.0',
+      result: {
+        contextId,
+        history: [message],
+        id: taskId,
+        kind: 'task',
+        status: { state: 'submitted' },
+      },
+    });
+    
+    // 2. Send working status
+    sendEvent({
+      id,
+      jsonrpc: '2.0',
+      result: {
+        contextId,
+        final: false,
+        kind: 'status-update',
+        status: {
+          message: {
+            contextId,
+            kind: 'message',
+            messageId: `msg-${Date.now()}-working`,
+            parts: [{ kind: 'text', text: 'Processing security scan...' }],
+            role: 'agent',
+            taskId,
+          },
+          state: 'working',
+          timestamp: new Date().toISOString(),
+        },
+        taskId,
+      },
+    });
+    
+    // 3. Execute the actual skill (same as message/send)
+    let skill = metadata?.skillId || metadata?.skill;
+    let skillParams: any = {};
+    
+    if (message?.parts && Array.isArray(message.parts)) {
+      for (const part of message.parts) {
+        if (part.kind === 'data' && part.data) {
+          skillParams = { ...skillParams, ...part.data };
+        } else if (part.kind === 'text' && part.text) {
+          skillParams._textContent = part.text;
+        }
+      }
+    }
+    
+    extractParametersFromText(skillParams);
+    
+    if (!skill) {
+      skill = autoRouteSkill(skillParams);
+    }
+    
+    let skillResult: any;
+    let taskStatus = 'completed';
+    
+    try {
+      switch (skill) {
+        case 'scanUrl':
+          skillResult = await handleScanUrl(skillParams);
+          break;
+        case 'checkDomain':
+          skillResult = await handleCheckDomain(skillParams);
+          break;
+        case 'analyzeEmail':
+          skillResult = await handleAnalyzeEmail(skillParams);
+          break;
+        case 'breachCheck':
+          skillResult = await handleBreachCheck(skillParams);
+          break;
+        default:
+          throw new Error(`Unknown skill: ${skill}`);
+      }
+    } catch (error: any) {
+      taskStatus = 'failed';
+      skillResult = {
+        error: true,
+        message: getHelpfulErrorMessage(error, skill, skillParams),
+        suggestion: getSuggestionForInput(skillParams._textContent),
+        acceptedInputs: getAcceptedInputsForSkill(skill),
+      };
+    }
+    
+    // 4. Send result message
+    const resultText = JSON.stringify({ status: taskStatus, result: skillResult }, null, 2);
+    sendEvent({
+      id,
+      jsonrpc: '2.0',
+      result: {
+        contextId,
+        final: false,
+        kind: 'status-update',
+        status: {
+          message: {
+            contextId,
+            kind: 'message',
+            messageId: `msg-${Date.now()}-result`,
+            parts: [{ kind: 'text', text: resultText }],
+            role: 'agent',
+            taskId,
+          },
+          state: 'working',
+          timestamp: new Date().toISOString(),
+        },
+        taskId,
+      },
+    });
+    
+    // 5. Send completion event
+    sendEvent({
+      id,
+      jsonrpc: '2.0',
+      result: {
+        contextId,
+        final: true,
+        kind: 'status-update',
+        status: {
+          state: taskStatus === 'completed' ? 'completed' : 'failed',
+          timestamp: new Date().toISOString(),
+        },
+        taskId,
+      },
+    });
+    
+  } catch (error: any) {
+    logger.error('Stream error:', error);
+    sendEvent({
+      id,
+      jsonrpc: '2.0',
+      error: {
+        code: -32603,
+        message: error.message || 'Internal error',
+      },
+    });
+  } finally {
+    res.end();
+  }
 }
 
 // Extract parameters from text content
