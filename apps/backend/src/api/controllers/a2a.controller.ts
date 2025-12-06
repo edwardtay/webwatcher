@@ -212,13 +212,20 @@ async function handleMessageSend(params: any): Promise<any> {
     };
   }
   
-  // Add AI analysis if available
+  // Generate comprehensive AI analysis
+  let responseText: string;
   if (taskStatus === 'completed' && skillResult) {
     try {
-      const aiAnalysis = await generateAIAnalysis(skill, skillParams, skillResult);
-      skillResult.aiAnalysis = aiAnalysis;
+      responseText = await generateComprehensiveAnalysis(skill, skillParams, skillResult);
     } catch (error) {
-      logger.warn('AI analysis failed, continuing without it:', error);
+      logger.warn('AI analysis failed, falling back to basic response:', error);
+      responseText = formatBasicResponse(skill, skillParams, skillResult);
+    }
+  } else {
+    // Error case
+    responseText = skillResult.message || 'An error occurred during the scan.';
+    if (skillResult.suggestion) {
+      responseText += `\n\n${skillResult.suggestion}`;
     }
   }
 
@@ -232,10 +239,7 @@ async function handleMessageSend(params: any): Promise<any> {
     parts: [
       {
         kind: 'text',
-        text: JSON.stringify({
-          status: taskStatus,
-          result: skillResult,
-        }, null, 2),
+        text: responseText,
       },
     ],
     metadata: {},
@@ -349,18 +353,23 @@ async function handleMessageStream(a2aRequest: A2ARequest, res: Response): Promi
       };
     }
     
-    // Add AI analysis if available
+    // Generate comprehensive AI analysis
+    let resultText: string;
     if (taskStatus === 'completed' && skillResult) {
       try {
-        const aiAnalysis = await generateAIAnalysis(skill, skillParams, skillResult);
-        skillResult.aiAnalysis = aiAnalysis;
+        resultText = await generateComprehensiveAnalysis(skill, skillParams, skillResult);
       } catch (error) {
-        logger.warn('AI analysis failed, continuing without it:', error);
+        logger.warn('AI analysis failed, falling back to basic response:', error);
+        resultText = formatBasicResponse(skill, skillParams, skillResult);
+      }
+    } else {
+      resultText = skillResult.message || 'An error occurred during the scan.';
+      if (skillResult.suggestion) {
+        resultText += `\n\n${skillResult.suggestion}`;
       }
     }
     
     // 4. Send result message
-    const resultText = JSON.stringify({ status: taskStatus, result: skillResult }, null, 2);
     sendEvent({
       id,
       jsonrpc: '2.0',
@@ -765,13 +774,13 @@ function getAcceptedInputsForSkill(skill: string): any {
   };
 }
 
-// Generate AI analysis of scan results using OpenAI
-async function generateAIAnalysis(skill: string, params: any, result: any): Promise<string> {
+// Generate comprehensive AI analysis of scan results using OpenAI
+async function generateComprehensiveAnalysis(skill: string, params: any, result: any): Promise<string> {
   try {
     const { ChatOpenAI } = await import('@langchain/openai');
     
     if (!process.env.OPENAI_API_KEY) {
-      return 'AI analysis unavailable (API key not configured)';
+      return formatBasicResponse(skill, params, result);
     }
     
     const llm = new ChatOpenAI({
@@ -783,28 +792,69 @@ async function generateAIAnalysis(skill: string, params: any, result: any): Prom
     const verdict = result.verdict || (result.riskScore >= 50 ? 'high risk' : result.riskScore >= 25 ? 'medium risk' : 'low risk');
     const threats = result.threats || [];
     
-    const prompt = `You are a cybersecurity expert analyzing scan results. Provide a brief, professional analysis.
+    const prompt = `You are a cybersecurity expert providing a security analysis report. Analyze the scan results and provide a comprehensive, well-formatted response.
 
-Skill: ${skill}
-Target: ${target}
-Verdict: ${verdict}
-Risk Score: ${result.riskScore || 0}/100
-Threats Found: ${threats.length > 0 ? threats.join(', ') : 'None'}
+SCAN TARGET: ${target}
+SCAN TYPE: ${skill}
+VERDICT: ${verdict}
+RISK SCORE: ${result.riskScore || 0}/100
+THREATS DETECTED: ${threats.length > 0 ? threats.join(', ') : 'None'}
 
-Scan Details:
+DETAILED SCAN RESULTS:
 ${JSON.stringify(result.details || {}, null, 2)}
 
-Provide a 2-3 sentence professional analysis explaining:
-1. What the scan found
-2. The level of risk
-3. Recommended action (if any)
+Provide a comprehensive security analysis in this format:
 
-Keep it concise and actionable.`;
+🔍 SECURITY ANALYSIS: [Target]
+
+📊 VERDICT: [Safe/Suspicious/Malicious] (Risk Score: X/100)
+
+🚨 KEY FINDINGS:
+• [Finding 1]
+• [Finding 2]
+• [Finding 3]
+
+💡 ANALYSIS:
+[2-3 sentences explaining what was found and why it matters]
+
+✅ RECOMMENDATION:
+[Clear, actionable recommendation]
+
+Keep it professional, concise, and easy to understand. Use emojis for visual clarity. Format with line breaks for readability.`;
     
     const response = await llm.invoke(prompt);
     return response.content.toString();
   } catch (error) {
     logger.error('AI analysis generation failed:', error);
-    return 'AI analysis unavailable';
+    return formatBasicResponse(skill, params, result);
   }
+}
+
+// Fallback formatting if AI is unavailable
+function formatBasicResponse(skill: string, params: any, result: any): string {
+  const target = params.url || params.domain || params.email || 'unknown';
+  const verdict = result.verdict || 'unknown';
+  const riskScore = result.riskScore || 0;
+  const threats = result.threats || [];
+  
+  let response = `🔍 SECURITY ANALYSIS: ${target}\n\n`;
+  response += `📊 VERDICT: ${verdict.toUpperCase()} (Risk Score: ${riskScore}/100)\n\n`;
+  
+  if (threats.length > 0) {
+    response += `🚨 THREATS DETECTED:\n`;
+    threats.forEach((threat: string) => {
+      response += `• ${threat}\n`;
+    });
+    response += `\n`;
+  }
+  
+  if (riskScore >= 50) {
+    response += `⚠️ HIGH RISK: This ${skill === 'scanUrl' ? 'URL' : 'target'} shows significant security concerns. Avoid interaction.\n`;
+  } else if (riskScore >= 25) {
+    response += `⚡ MEDIUM RISK: Exercise caution when interacting with this ${skill === 'scanUrl' ? 'URL' : 'target'}.\n`;
+  } else {
+    response += `✅ LOW RISK: No significant threats detected. Appears safe.\n`;
+  }
+  
+  return response;
 }
