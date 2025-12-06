@@ -1,4 +1,4 @@
-# �️ WbebWatcher - Cybersecurity Intelligence Platform
+# Web Watcher - Cybersecurity Intelligence Platform
 
 **WebWatcher** is an advanced cybersecurity agent that provides real-time threat analysis, breach detection, and comprehensive security scanning through AI-powered agents and multi-protocol integration.
 
